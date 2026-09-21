@@ -1,5 +1,6 @@
 """Research: gather the pack Ming reads. Tier 1 filings and wires, tier 2 news, Alpaca news and movers, Firecrawl confirmation, the operator's ideas."""
 import os, re, datetime as dt, feedparser, httpx
+from zoneinfo import ZoneInfo
 from .ideas import ideas
 
 UA = {"User-Agent": "Ming research bot (contact: operator@example.com)"}
@@ -20,7 +21,7 @@ class Research:
                 if ts:
                     t = dt.datetime(*ts[:6], tzinfo=dt.timezone.utc)
                     if t < cutoff: continue
-                    stamp = t.strftime("%m-%d %H:%M")
+                    stamp = t.astimezone(ZoneInfo(self.cfg.tz)).strftime("%m-%d %H:%M ET")
                 else: stamp = ""
                 title = re.sub(r"\s+", " ", e.get("title", "")).strip()
                 summ = re.sub(r"<[^>]+>", "", e.get("summary", "") or "")[:200].strip()
@@ -59,7 +60,10 @@ class Research:
         if not refresh:
             parts["tier1_filings"] = parts.get("tier1", [])
         try:
-            parts["alpaca_news"] = [f"[alpaca {n['ts'][5:16]}] {n['headline']} {' '.join(n['symbols'][:4])} — {n['summary'][:160]}" for n in self.b.news(limit=60)]
+            def _et(iso):
+                try: return dt.datetime.fromisoformat(iso).astimezone(ZoneInfo(self.cfg.tz)).strftime("%m-%d %H:%M ET")
+                except Exception: return iso[5:16]
+            parts["alpaca_news"] = [f"[alpaca {_et(n['ts'])}] {n['headline']} {' '.join(n['symbols'][:4])} — {n['summary'][:160]}" for n in self.b.news(limit=60)]
         except Exception as e:
             self.j.log("WARN", f"alpaca news failed: {type(e).__name__}"); parts["alpaca_news"] = []
         try:
