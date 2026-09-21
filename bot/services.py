@@ -18,7 +18,7 @@ class Services:
         self.risk = Risk(self.cfg, self.b, self.j); self.exe = Executor(self.cfg, self.b, self.j, self.risk, self.analyst)
         self.report = Report(self.cfg, self.b, self.j, self.llm)
         self.busy = None; self._lock = threading.Lock()
-        self.j.log("INFO", f"Ming online: mode {'LIVE' if self.cfg.live else 'paper'}, broker {self.b.name}, brain {'connected' if self.llm.ready else 'NOT connected'}")
+        self.j.log("INFO", f"Ming online: mode {'LIVE' if self.cfg.live else 'paper'}, broker {self.b.name}, brain {self.llm.status}")
 
     # ---- commands (the buttons) ----
     def run(self, cmd):
@@ -61,7 +61,7 @@ class Services:
         now = dt.datetime.now(); wd = now.weekday() < 5
         s.update({"mode": "live" if self.cfg.live else "paper", "halted": self.risk.halted, "halt_reason": self.j.get("halt_reason", ""),
                   "market_open": bool(clock.get("is_open")), "workday": wd and 5 <= now.hour < 18, "aggression": self.cfg.aggression,
-                  "positions": pos, "config": self.cfg.risk, "busy": self.busy, "brain": self.llm.ready, "broker": self.b.name})
+                  "positions": pos, "config": self.cfg.risk, "busy": self.busy, "brain": self.llm.status, "broker": self.b.name})
         return s
     def theses(self, day=None):
         return self.j.theses_for(day or dt.date.today().isoformat())
@@ -76,7 +76,7 @@ class Services:
     def context_for_agent(self):
         """Compact context for chat and voice: state, theses, positions, last log lines, ideas."""
         s = self.state(); th = self.theses()
-        lines = [f"MODE {s['mode']}{' HALTED: ' + s['halt_reason'] if s['halted'] else ''}. Equity ${s['equity']:,.2f}, today {s['day_pnl']:+.2f}, since start {s['pnl']:+.2f}, edge vs SPY {s['edge_pts']:+.2f} pts, closed {s['closed_trades']}, hit rate {s['hit_rate'] or 0:.0f}%. Aggression {s['aggression']}. Brain {'on' if s['brain'] else 'NOT connected'}. Market {'open' if s['market_open'] else 'closed'}.",
+        lines = [f"MODE {s['mode']}{' HALTED: ' + s['halt_reason'] if s['halted'] else ''}. Equity ${s['equity']:,.2f}, today {s['day_pnl']:+.2f}, since start {s['pnl']:+.2f}, edge vs SPY {s['edge_pts']:+.2f} pts, closed {s['closed_trades']}, hit rate {s['hit_rate'] or 0:.0f}%. Aggression {s['aggression']}. Brain {s['brain']}. Market {'open' if s['market_open'] else 'closed'}.",
                  "POSITIONS: " + ("; ".join(f"{p['symbol']} {p['qty']:.0f} @ {p['entry']:.2f} now {p['price']:.2f} ({p['pl_pct']:+.1f}%) stop {p['stop'] or '-'}" for p in s["positions"]) or "none"),
                  "THESES TODAY: " + ("; ".join(f"{t['symbol']} conv {t['conviction']} {'IN' if t['acted'] else ('skip: ' + (t['reject_reason'] or 'pending'))}: {t['catalyst']}" for t in th) or "none"),
                  "IDEAS: " + self.ideas().replace("\n", " | "),

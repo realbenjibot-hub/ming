@@ -573,7 +573,7 @@ async function load(){
     const s=await api('/api/state');state=s;
     setMood(s);
     $('#modeText').textContent=s.mode; $('#modeBadge').className='badge'+(s.mode==='live'?' live':'');
-    $('#brain').style.display=s.brain===false?'block':'none';
+    $('#brain').textContent=s.brain==='rejected'?'brain rejected: OPENAI_API_KEY is invalid, replace it in Railway':'brain not connected: add OPENAI_API_KEY in Railway'; $('#brain').style.display=(s.brain==='connected')?'none':'block';
     const b=s.bot_return_pct,p=s.spy_return_pct,span=Math.max(2,Math.abs(b),Math.abs(p));
     bar('#botBar',b,span); bar('#spyBar',p,span);
     $('#botRet').textContent=sign(b)+'%'; $('#spyRet').textContent=sign(p)+'%';

@@ -13,7 +13,7 @@ class Analyst:
         self.cfg = cfg; self.llm = llm; self.j = journal
 
     def theses(self, pack, refresh=False, existing=None):
-        if not self.llm.ready: return [], "no brain connected"
+        if not self.llm.ready: return [], self.llm.problem
         risk = self.cfg.risk
         sys = persona() + f"\n\nYou are running the {'9:00 refresh' if refresh else '6:00 research pass'}. Current rules: min price ${risk['min_price']}, min conviction to trade {risk['min_conviction']}, max positions {risk['max_positions']}. Write at most {self.cfg.llm.get('max_theses',8)} theses."
         user = pack
@@ -35,7 +35,7 @@ class Analyst:
 
     def invalidated(self, trade, thesis, price, news_lines):
         """Afternoon check: is the reason for the trade gone? Returns (bool, why)."""
-        if not self.llm.ready or not thesis: return False, "no brain connected"
+        if not self.llm.ready or not thesis: return False, (self.llm.problem if not self.llm.ready else "no thesis")
         sys = persona() + "\n\nYou are reviewing an open position at 3:45 PM ET. Decide only whether the original thesis is invalidated. Be strict: normal noise is not invalidation."
         user = f"POSITION: {trade['symbol']} entry {trade['entry']:.2f} now {price:.2f} ({(price/trade['entry']-1)*100:+.1f}%)\nTHESIS: {thesis.get('catalyst')}\nREASON: {thesis.get('reason')}\nINVALIDATION CONDITION: {thesis.get('invalidation')}\nTODAY'S NEWS ON IT:\n" + "\n".join(news_lines[:30])
         out = self.llm.json(sys, user, '\nSchema: {"invalidated":false,"why":"one line"}', max_tokens=300)
@@ -44,7 +44,7 @@ class Analyst:
 
     def think(self, question, context):
         """Slow thinking for the voice agent: a real answer from the strong model."""
-        if not self.llm.ready: return "I do not have my brain connected yet. Ask the operator to add the OpenAI key."
+        if not self.llm.ready: return "OpenAI rejected my key. Ask the operator to replace it in Railway." if self.llm.status == "rejected" else "I do not have my brain connected yet. Ask the operator to add the OpenAI key."
         sys = persona() + "\n\nThe operator asked you to think hard about something. Answer in your own voice, in a few short paragraphs at most, with numbers from the context when you have them. Never predict a price."
         m = self.llm.chat([{"role": "system", "content": sys}, {"role": "user", "content": f"CONTEXT:\n{context}\n\nQUESTION: {question}"}], max_tokens=800)
         return (m.content if m else "I could not think that through right now.").strip()

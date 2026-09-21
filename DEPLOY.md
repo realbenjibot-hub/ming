@@ -33,7 +33,7 @@ About fifteen minutes. Keys are pasted into Railway only, never into chat or int
 
 ## 3. First run
 1. Open the domain. Username anything, password the one you set.
-2. The status line should read `paper` and the activity list should say `Ming online: mode paper, broker alpaca, brain connected` (or `brain NOT connected` until the OpenAI key is in; that is fine).
+2. The status line should read `paper` and the activity list should say `Ming online: mode paper, broker alpaca, brain connected` (or `brain absent` until the OpenAI key is in; that is fine; `brain rejected` in the log means the key is wrong).
 3. Click `research`. Within a minute the activity list fills. With the brain connected, theses appear on the right.
 4. Send the activity list and the theses back to the build session.
 
@@ -47,7 +47,7 @@ Nothing. He runs at 6:00, 9:00, 9:35, 15:45, 16:05 ET on weekdays. Open the page
 
 ## If something is wrong
 - `Load failed` toast: the service is asleep or restarting. Railway, service, Deployments, look at the logs.
-- `brain not connected` on the page: OPENAI_API_KEY is missing or wrong.
+- `brain not connected` on the page: OPENAI_API_KEY is missing. `brain rejected` means the key is present but OpenAI answered 401 to it: replace it in Railway and redeploy.
 - A feed shows `failed` in the activity list: that source is down; the others carry on.
 - 6:00 did not fire: check the plan (free trial sleeps) and the service logs for `scheduler on`.
 - Voice fails to connect: browser must be Chrome, Edge, or Safari on https; check the OpenAI key has credit.
