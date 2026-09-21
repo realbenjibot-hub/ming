@@ -13,7 +13,7 @@ class Chat:
         self.svc = svc
     def reply(self, history):
         llm = self.svc.llm
-        if not llm.ready: return "My brain is not connected yet. Add the OpenAI key in Railway and I will be here."
+        if not llm.ready: return "OpenAI rejected my key. Replace OPENAI_API_KEY in Railway and redeploy, and I will be here." if llm.status == "rejected" else "My brain is not connected yet. Add the OpenAI key in Railway and I will be here."
         msgs = [{"role": "system", "content": persona() + RULES + "\n\nCURRENT CONTEXT:\n" + self.svc.context_for_agent()}] + history[-16:]
         for _ in range(6):
             m = llm.chat(msgs, tools=openai_tools())

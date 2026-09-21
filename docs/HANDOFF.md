@@ -27,7 +27,7 @@ Claude has a fine-grained GitHub token (Contents read/write, this repo only, 90 
 3. Dial back to 5 after NVO closes (recommendation).
 4. Watch the 09-22 6:00 and 9:00 runs; read the 16:05 report in the chat.
 5. operator.md still has five unanswered questions for Caden (involvement level, disagreement handling, off-limits names, definition of a good two weeks, what Ming calls him).
-6. Health check should say "brain rejected" when the key is invalid instead of "connected" when a key is merely present.
+6. Done 09-21 evening: brain status is now absent, connected, or rejected. OpenAI is probed at startup (no tokens) and every 401 flips the status to rejected; /health, /api/state, the page, the chat, and the log all say so.
 7. Two-week scorecard at the end: edge vs SPY, hit rate and win-to-loss size, thesis quality, exit reasons, days sat out. Then the live decision.
 
 ## Prompt for the new session

@@ -24,7 +24,7 @@ def auth(c: HTTPBasicCredentials = Depends(security)):
     return True
 
 @app.get("/health")
-def health(): return {"ok": True, "busy": svc.busy, "brain": svc.llm.ready, "broker": svc.b.name, "mode": "live" if svc.cfg.live else "paper"}
+def health(): return {"ok": True, "busy": svc.busy, "brain": svc.llm.status, "broker": svc.b.name, "mode": "live" if svc.cfg.live else "paper"}
 
 @app.get("/", dependencies=[Depends(auth)])
 def index(): return FileResponse(ROOT / "static" / "index.html")
