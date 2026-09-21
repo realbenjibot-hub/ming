@@ -313,7 +313,7 @@ const fmt=(n,d=2)=>Number(n).toLocaleString(undefined,{minimumFractionDigits:d,m
 const sign=(n,d=2)=>(n>=0?'+':'')+fmt(n,d);
 const cls=n=>n>=0?'up':'down';
 const LABELS={capital_cap:'Capital cap $',loss_cap_daily_pct:'Daily loss %',loss_cap_total_pct:'Total loss %',max_positions:'Max positions',max_position_pct:'Per name %',max_sector_positions:'Per sector',stop_loss_pct:'Stop %',trail_trigger_pct:'Trail trigger %',trail_pct:'Trail %',take_profit_pct:'Take profit %',min_conviction:'Min conviction',min_price:'Min price $'};
-let history=[],PRESETS=null;
+let history=[],PRESETS=null,state={};
 
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2400)}
 /* ---------- API ---------- */
@@ -570,7 +570,7 @@ const TINT={up:[140,235,175],down:[240,140,140],flat:[236,240,246],restUp:.30,re
 /* ---------- data ---------- */
 async function load(){
   try{
-    const s=await api('/api/state');
+    const s=await api('/api/state');state=s;
     setMood(s);
     $('#modeText').textContent=s.mode; $('#modeBadge').className='badge'+(s.mode==='live'?' live':'');
     $('#brain').style.display=s.brain===false?'block':'none';
@@ -606,7 +606,15 @@ async function setKnob(key,val){try{await api('/api/config',{method:'POST',heade
 
 /* ---------- controls ---------- */
 async function run(cmd){const b=[...document.querySelectorAll('#controls button')].find(x=>x.textContent.trim()===cmd);if(b)b.classList.add('busy');toast('Running '+cmd);
-  try{await api('/api/run/'+cmd,{method:'POST'});toast(cmd+' done')}catch(e){toast('Failed: '+e.message)}finally{if(b)b.classList.remove('busy');load()}}
+  try{const r=await api('/api/run/'+cmd,{method:'POST'});toast(cmd+' done');
+    const x=r.result||{};
+    if(cmd==='report'&&x.report)addMsg('a',x.report.split('\n\nTHESES TODAY')[0]);
+    else if(cmd==='research'||cmd==='morning'){const th=x.theses||[];addMsg('a',th.length?('Research done. '+th.length+' theses: '+th.map(t=>t.symbol+' '+t.conviction).join(', ')+'. Bar to trade is conviction '+(state.config?state.config.min_conviction:7)+'.'):('Research done. No theses today'+(x.note?': '+x.note:'.')))}
+    else if(cmd==='execute'){const tr=x.trades||[];addMsg('a',tr.length?('Executed: '+tr.map(t=>'BUY '+t.qty+' '+t.symbol+' @ '+fmt(t.fill)+' stop '+fmt(t.stop)).join('; ')):'Execute ran. Nothing qualified; see activity for the reasons.')}
+    else if(cmd==='review')addMsg('a','Review done. Open positions checked; any exits or stop changes are in activity.');
+    else if(cmd==='kill')addMsg('a','Killed. Everything flat, halted until you resume.');
+    else if(cmd==='resume')addMsg('a','Resumed. Baseline reset to now.');
+  }catch(e){toast('Failed: '+e.message);addMsg('a',cmd+' failed: '+e.message)}finally{if(b)b.classList.remove('busy');load()}}
 let cfResolve=null;
 function ask(title,text,yes){return new Promise(res=>{cfResolve=res;$('#cfTitle').textContent=title;$('#cfText').textContent=text;$('#cfYes').textContent=yes||'yes';$('#confirm').classList.add('show')})}
 function cfAnswer(v){$('#confirm').classList.remove('show');if(cfResolve)cfResolve(v);cfResolve=null}
