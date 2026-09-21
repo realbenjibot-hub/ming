@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tradebot demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050505;--fg:#ECE7DD;--dim:#8A847A;--line:rgba(255,255,255,.09);--glass:rgba(10,10,12,.55);
+  --up:#7DF2A6;--down:#FF6B6B;--warm:#F2C879;--cold:#7FB6FF;
+  --glow:rgba(175,208,255,.62);      /* monitor light on the face, set by mood */
+  --type:.42s;                        /* typing cadence */
+  --swing:2.6s;                       /* leg swing period */
+  --dimmer:.88;                       /* overall room brightness */
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:"Instrument Sans",Inter,system-ui,sans-serif;overflow:hidden;height:100%}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+button{font:inherit;cursor:pointer;color:var(--fg);background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:6px;padding:9px 12px;min-height:40px;letter-spacing:.02em;font-size:.78rem;text-transform:uppercase;transition:background .2s,border-color .2s}
+button:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.22)}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--warm);outline-offset:2px}
+button.kill{color:#FFB3B3;border-color:rgba(255,107,107,.35)}
+button.kill:hover{background:rgba(255,107,107,.12)}
+button.go{color:#0b0b0b;background:var(--warm);border-color:var(--warm);font-weight:600}
+
+/* ---------- stage ---------- */
+/* fixed 1920x1080 canvas, scaled to fit the window and letterboxed, so the layout is identical on every screen */
+.stage{position:fixed;left:50%;top:50%;width:1920px;height:1080px;transform:translate(-50%,-50%) scale(var(--fit,1));transform-origin:50% 50%;overflow:hidden;background:#000;font-size:16px}
+.scene{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform:translate(-50%,-50%);filter:brightness(var(--dimmer));transition:filter 1.2s}
+.p{position:absolute;inset:0;pointer-events:none;will-change:transform}       /* parallax wrapper, moved by JS */
+.layer{position:absolute;pointer-events:none;will-change:transform}
+#room{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
+#roomblur{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;filter:blur(2.2px);
+  -webkit-mask-image:radial-gradient(ellipse 48% 52% at 50% 50%,transparent 55%,black 100%);mask-image:radial-gradient(ellipse 48% 52% at 50% 50%,transparent 55%,black 100%)}
+#bulb{left:50.1%;top:15.2%;width:9%;height:6%;transform:translateX(-50%);background:radial-gradient(ellipse 40% 55% at 50% 30%,rgba(255,236,200,.35),rgba(255,220,170,.09) 45%,transparent 70%);mix-blend-mode:screen}
+/* coordinates are % of the 1672x941 plate */
+#lamp{left:45.81%;top:7.65%;width:8.55%;transform-origin:50% 6%}
+#cone{left:50.1%;top:12%;width:46%;height:88%;transform-origin:50% 0;transform:translateX(-50%);-webkit-mask-image:linear-gradient(to bottom,transparent 0,black 14%,black 80%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,black 14%,black 80%,transparent 100%);
+  background:radial-gradient(ellipse 52% 100% at 50% 0%,rgba(255,224,168,.10),rgba(255,224,168,.035) 42%,transparent 68%);
+  mix-blend-mode:screen}
+#pool{left:50.1%;top:70%;width:40%;height:24%;transform:translateX(-50%);
+  background:radial-gradient(ellipse 50% 45% at 50% 50%,rgba(255,214,150,.09),transparent 70%);mix-blend-mode:screen}
+#leg_l{left:43.36%;top:71.84%;width:5.50%;transform-origin:50% 5%}
+#leg_r{left:45.45%;top:70.99%;width:7.06%;transform-origin:50% 5%}
+#hand_l{left:43.06%;top:48.25%;width:3.71%;transform-origin:96% 70%}
+#hand_r{left:45.45%;top:48.25%;width:3.35%;transform-origin:96% 70%}
+#head{left:46.89%;top:25.93%;width:12.08%;transform-origin:50% 92%;
+  -webkit-mask-image:radial-gradient(ellipse 60% 60% at 50% 50%,#000 55%,transparent 100%);mask-image:radial-gradient(ellipse 60% 60% at 50% 50%,#000 55%,transparent 100%)}
+#headimg{width:100%;display:block}
+.lens{position:absolute;pointer-events:none}
+#lens_a{left:9.9%;top:52.2%;width:20.79%}
+#lens_b{left:27.23%;top:50.55%;width:22.28%}
+.glint{border-radius:50%;mix-blend-mode:screen;background:radial-gradient(ellipse 55% 45% at 38% 40%,rgba(210,235,255,.95),rgba(160,200,255,.35) 45%,transparent 70%);opacity:0}
+#glint_a{left:11%;top:54%;width:17%;height:19%}
+.lensref{border-radius:50%;mix-blend-mode:screen;opacity:.18}
+#ref_a{left:11.5%;top:54.5%;width:16%;height:18%}
+#ref_b{left:29%;top:53%;width:17%;height:18%}
+#glint_b{left:28.5%;top:52.5%;width:18%;height:19%}
+/* light from the screen: broad wash on the near side of the face, a rim on the cheek and hair, spill on the desk and keyboard */
+.facelit{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;transition:none;
+  -webkit-mask-image:url(/scene/head.png);mask-image:url(/scene/head.png);-webkit-mask-size:100% 100%;mask-size:100% 100%;mask-mode:luminance;-webkit-mask-mode:luminance}
+#faceglow{background:linear-gradient(100deg,var(--glow) 0%,rgba(0,0,0,0) 62%);transition:background 1.5s}
+/* expression and blink hooks: variant heads and a closed-eyes overlay live inside #head, faded in and out by JS */
+.headvar,#blink{position:absolute;left:0;top:0;width:100%;display:block;opacity:0;transition:opacity .45s ease}
+#blink{transition:opacity .07s linear}
+#facerim{background:linear-gradient(95deg,rgba(238,240,246,.7) 0%,rgba(238,240,246,.2) 28%,transparent 48%);opacity:.5}
+/* ray: a soft beam from the monitor. Conic mask is a smooth profile (dim edge, bright spine, dim edge) so no straight edge reads;
+   falloff toward his face is in the color gradient. Starts inside the bezel so there is no hard left edge. */
+#ray{left:36.6%;top:19%;width:16.6%;height:40%;mix-blend-mode:screen;opacity:.35;filter:blur(6px);transform-origin:0% 50%;
+  -webkit-mask-image:conic-gradient(from 58deg at -28% 50%,transparent 0deg,rgba(0,0,0,.35) 16deg,#000 30deg,#000 34deg,rgba(0,0,0,.35) 48deg,transparent 64deg,transparent 360deg);
+  mask-image:conic-gradient(from 58deg at -28% 50%,transparent 0deg,rgba(0,0,0,.35) 16deg,#000 30deg,#000 34deg,rgba(0,0,0,.35) 48deg,transparent 64deg,transparent 360deg)}
+#screen{left:37.5%;top:24.5%;width:.9%;height:24.5%;mix-blend-mode:screen;transform:skewY(-7deg);filter:blur(.6px);
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 15%,#000 85%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 15%,#000 85%,transparent 100%)}
+#dust{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:screen}
+#vignette{position:absolute;inset:0;background:radial-gradient(ellipse 66% 76% at 50% 44%,transparent 44%,rgba(0,0,0,.7));pointer-events:none}
+@media(prefers-reduced-motion:reduce){.layer,.scene,#cone,#pool,#faceglow,#screen{transition:none}}
+/* ---------- HUD: instruments in the dark. Quiet at rest, bright under the cursor, detail on click. ---------- */
+.hud{position:absolute;inset:0;pointer-events:none;font-size:15px;line-height:1.45;color:var(--fg);--soft:rgba(236,231,221,.6);--dim2:rgba(236,231,221,.36);--rule:rgba(236,231,221,.14);--gx:3.2%;--gw:22%}
+.hud .r{position:absolute;pointer-events:auto;opacity:.82;transition:opacity .35s}
+.hud .r:hover,.hud .r:focus-within{opacity:1}
+.hud h4{margin:0 0 .6em;font-size:.78em;font-weight:500;color:var(--dim);letter-spacing:.05em;display:flex;justify-content:space-between;align-items:baseline}
+.hud h4 span{color:var(--dim2);font-weight:400;letter-spacing:0}
+.hud .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.hud ::-webkit-scrollbar{width:0;height:0}
+.up{color:var(--up)}.down{color:var(--down)}
+.hud .more{max-height:0;overflow:hidden;opacity:0;transition:max-height .35s ease,opacity .3s ease,margin .3s;font-size:.86em;color:var(--soft);line-height:1.45}
+.hud .open>.more{max-height:8em;opacity:1;margin-top:.35em}
+/* status + schedule */
+#status{left:var(--gx);top:4%;display:flex;gap:1.6em;font-size:.84em;color:var(--dim)}
+.badge{display:inline-flex;align-items:center;gap:.55em}
+.badge .dot{width:.5em;height:.5em;border-radius:50%;background:var(--up);box-shadow:0 0 .6em var(--up)}
+.badge.live .dot{background:var(--warm);box-shadow:0 0 .6em var(--warm)}
+.badge.halt .dot{background:var(--down);box-shadow:0 0 .6em var(--down)}
+.badge.asleep .dot{background:var(--dim);box-shadow:none}
+#sched{left:50%;top:4%;transform:translateX(-50%);display:flex;gap:2.4em;font-size:.8em;color:var(--dim2);white-space:nowrap}
+#sched span{display:flex;gap:.5em;align-items:baseline}
+#sched b{font-weight:400;color:var(--dim)}
+#sched span.next{color:var(--soft)}#sched span.next b{color:var(--warm)}
+#sched span.done{opacity:.45}
+/* the edge: one number, two tracks */
+#race{left:var(--gx);top:10%;width:var(--gw)}
+.edge{font-size:5.2em;font-weight:300;letter-spacing:-.035em;line-height:.95;color:var(--fg);transition:color 1.2s}
+.edge.up{color:#C9EDD6}.edge.down{color:#F0C2C2}
+.edge small{display:block;font-family:"Instrument Sans",Inter,system-ui,sans-serif;font-size:.17em;color:var(--dim);letter-spacing:.02em;margin:.9em 0 1.6em;font-weight:400}
+.race-row{display:grid;grid-template-columns:2.4em 1fr 4.6em;align-items:center;gap:1em;margin:.55em 0}
+.race-row .lbl{font-size:.78em;color:var(--dim)}
+.race-row .mono{text-align:right;font-size:.86em;color:var(--soft)}
+.track{height:2px;background:var(--rule);position:relative}
+.track:before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--rule)}
+.track i{position:absolute;top:0;bottom:0;left:50%;transition:all .8s cubic-bezier(.2,.8,.2,1)}
+.bot i{background:var(--warm);box-shadow:0 0 6px var(--warm)}
+.spy i{background:var(--soft)}
+/* account */
+#equity{left:var(--gx);top:33%;width:var(--gw)}
+#eq{font-size:2.2em;font-weight:300;display:block;letter-spacing:-.02em;line-height:1.1}
+.kv{display:flex;justify-content:space-between;padding:.25em 0;color:var(--dim)}
+.kv .mono{color:var(--soft)}
+.kv.big .mono{font-size:1.05em}
+#equity .more{margin-top:0}
+#equity:hover .more,#equity.open .more{max-height:6em;opacity:1}
+/* positions: name and P&L, detail on click */
+#positions{left:var(--gx);top:50%;width:var(--gw);max-height:24%;overflow:auto;scrollbar-width:none}
+.pos{padding:.45em 0;border-top:1px solid var(--rule);cursor:pointer}
+.pos:first-child{border-top:0}
+.pos .line{display:flex;justify-content:space-between;align-items:baseline;gap:1em}
+.pos .sym{font-weight:500}
+.pos .pl{font-size:.95em}
+.pos .pl small{color:var(--dim2);margin-left:.6em;font-size:.85em}
+.cat{font-size:.82em;color:var(--dim)}
+/* controls and aggression */
+#controls{left:var(--gx);bottom:4%;width:var(--gw);display:flex;gap:1.4em;flex-wrap:wrap}
+#controls h4{display:none}
+#controls button{background:none;border:0;border-bottom:1px solid transparent;border-radius:0;padding:.2em 0;min-height:0;font:inherit;font-size:.92em;text-transform:none;letter-spacing:0;color:var(--soft);transition:color .2s,border-color .2s}
+#controls button:hover{color:var(--fg);border-bottom-color:var(--soft)}
+#controls button.kill{color:#E89A9A;margin-left:auto}
+#controls button.kill:hover{border-bottom-color:#E89A9A}
+#dial{left:var(--gx);bottom:11.5%;width:var(--gw)}
+.dial-head{display:flex;justify-content:space-between;align-items:baseline}
+.dial-head h4{margin:0}
+.dial-name{font-size:.9em;color:var(--soft)}
+.dial-name.hot{color:var(--warm)}.dial-name.danger{color:var(--down)}
+.dial-body{max-height:0;overflow:hidden;opacity:0;transition:max-height .35s,opacity .3s}
+#dial:hover .dial-body,#dial:focus-within .dial-body{max-height:10em;opacity:1}
+#dial .rail{height:2px;background:var(--rule);margin-top:.7em;position:relative}
+#dial .rail i{position:absolute;left:0;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--warm);box-shadow:0 0 8px var(--warm);transform:translateX(-50%);transition:left .3s}
+#dial:hover .rail,#dial:focus-within .rail{display:none}
+input[type=range]{width:100%;margin:.6em 0 .2em;accent-color:var(--warm);height:14px;-webkit-appearance:none;appearance:none;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--rule)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:var(--warm);margin-top:-4px;box-shadow:0 0 8px var(--warm)}
+input[type=range]::-moz-range-track{height:2px;background:var(--rule)}
+input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radius:50%;background:var(--warm)}
+.ticks{display:flex;justify-content:space-between;font-size:.72em;color:var(--dim2)}
+.dial-desc{font-size:.82em;color:var(--dim);margin-top:.4em;line-height:1.35}
+details.knobs{margin-top:.4em}
+details.knobs summary{cursor:pointer;font-size:.78em;color:var(--dim);list-style:none}
+details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{content:"− "}
+.knobgrid{display:grid;grid-template-columns:1fr 1fr;gap:.3em .8em;margin-top:.4em}
+.knobgrid label{display:block;font-size:.72em;color:var(--dim)}
+.knobgrid input{width:100%;background:none;border:0;border-bottom:1px solid var(--rule);color:var(--fg);font-size:.9em;padding:.15em 0}
+/* theses: name, conviction bar, verdict; catalyst on click */
+#theses{right:var(--gx);top:10%;width:var(--gw);max-height:34%;overflow:auto;scrollbar-width:none}
+.th{padding:.5em 0;border-top:1px solid var(--rule);cursor:pointer}
+.th:first-child{border-top:0}
+.th .line{display:grid;grid-template-columns:4.2em 1fr 3.6em;align-items:center;gap:1em}
+.th .sym{font-weight:500}
+.th .conv{height:2px;background:var(--rule);position:relative}
+.th .conv i{position:absolute;left:0;top:0;bottom:0;background:var(--soft);transition:width .6s}
+.th.in .conv i{background:var(--warm);box-shadow:0 0 6px var(--warm)}
+.th .tag{font-size:.78em;color:var(--dim);text-align:right}
+.th.in .tag{color:var(--warm)}
+.th .more .sector{color:var(--dim2)}
+/* activity: last three lines, all on hover */
+#logwrap{right:var(--gx);top:38%;width:var(--gw);height:26%}
+#log{font-size:.82em;height:100%;overflow:auto;scrollbar-width:none;color:var(--soft);-webkit-mask-image:linear-gradient(to bottom,#000 80%,transparent);mask-image:linear-gradient(to bottom,#000 80%,transparent)}
+#log h4{text-transform:lowercase}
+#log div{padding:.2em 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .3s}
+#log div:nth-of-type(n+4){opacity:0}
+#logwrap:hover #log div{opacity:1}
+#log .lv{display:none}
+#log div .mono{color:var(--dim2);margin-right:.7em}
+/* chat */
+#chat{right:var(--gx);bottom:4%;width:var(--gw);height:22%;display:flex;flex-direction:column;justify-content:flex-end;gap:.7em}
+#msgs{overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:.5em;-webkit-mask-image:linear-gradient(to bottom,transparent,#000 22%);mask-image:linear-gradient(to bottom,transparent,#000 22%);padding-top:1.5em}
+.msg{max-width:92%;font-size:.9em;line-height:1.45;white-space:pre-wrap;color:var(--soft)}
+.msg.a{align-self:flex-start;color:var(--fg)}
+.msg.u{align-self:flex-end;text-align:right;color:var(--warm)}
+.msg.think{color:var(--dim);font-style:italic}
+.chatin{display:flex;gap:.5em;align-items:flex-end;border-bottom:1px solid var(--rule);padding-bottom:.3em;transition:border-color .3s}
+.chatin:focus-within{border-bottom-color:var(--soft)}
+.chatin textarea{flex:1;resize:none;height:2.6em;background:none;border:0;color:var(--fg);padding:.3em 0;font:inherit;font-size:.95em}
+.chatin textarea::placeholder{color:var(--dim)}
+.chatin button.go{background:none;border:0;color:var(--warm);font:inherit;text-transform:none;padding:.2em 0;min-height:0}
+.chatin button.go:hover{text-decoration:underline}
+.chatin button.talk{background:none;border:1px solid var(--rule);border-radius:999px;width:2.2em;height:2.2em;min-height:0;padding:0;color:var(--soft);font:inherit;display:grid;place-items:center;transition:all .25s;cursor:pointer}
+.chatin button.talk:hover{color:var(--fg);border-color:var(--soft)}
+.chatin button.talk.on{color:#0b0b0d;background:var(--warm);border-color:var(--warm);box-shadow:0 0 14px var(--warm)}
+.chatin button.talk.on.speaking{animation:none;box-shadow:0 0 22px var(--warm)}
+.chatin button.talk.on.listening{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 8px var(--warm)}50%{box-shadow:0 0 22px var(--warm)}}
+.chatin button.talk svg{width:1.05em;height:1.05em}
+#voiceState{font-size:.78em;color:var(--dim);min-height:1.2em}
+.msg.v{color:var(--soft);font-style:italic}
+/* in-page confirm */
+#confirm{position:absolute;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);z-index:20;pointer-events:auto}
+#confirm.show{display:grid}
+#confirm .box{width:420px;padding:22px 24px;background:rgba(14,14,17,.92);border:1px solid var(--rule);backdrop-filter:blur(8px);font-size:15px;line-height:1.5}
+#confirm .box b{display:block;font-weight:500;margin-bottom:.4em}
+#confirm .box p{margin:0 0 1.2em;color:var(--soft)}
+#confirm .row{display:flex;gap:1.4em;justify-content:flex-end}
+#confirm button{background:none;border:0;min-height:0;padding:.2em 0;font:inherit;text-transform:none;letter-spacing:0;color:var(--soft);border-bottom:1px solid transparent;cursor:pointer}
+#confirm button.yes{color:#E89A9A}#confirm button:hover{border-bottom-color:currentColor}
+#controls button.busy{color:var(--warm);pointer-events:none}
+#brain{position:absolute;left:var(--gx);top:7.2%;font-size:.78em;color:#E89A9A;display:none;pointer-events:auto}
+.toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:var(--glass);border:1px solid var(--line);padding:8px 14px;border-radius:6px;font-size:.8rem;z-index:30;opacity:0;transition:opacity .2s;backdrop-filter:blur(6px)}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="scene" id="scene">
+    <div class="p" data-d="0.3"><img id="room" src="/scene/room.jpg" alt=""><img id="roomblur" src="/scene/room.jpg" alt=""></div>
+    <div class="p" data-d="0.3"><div class="layer" id="cone"></div><div class="layer" id="pool"></div></div>
+    <div class="p" data-d="0.3"><img class="layer" id="leg_r" src="/scene/leg_r.png" alt=""><img class="layer" id="leg_l" src="/scene/leg_l.png" alt=""></div>
+    <div class="p" data-d="0.3"><img class="layer" id="hand_r" src="/scene/hand_r.png" alt=""><img class="layer" id="hand_l" src="/scene/hand_l.png" alt=""><div class="layer" id="head"><img id="headimg" src="/scene/head.png" alt=""><img class="lens" id="lens_a" src="/scene/lens_a.png" alt=""><img class="lens" id="lens_b" src="/scene/lens_b.png" alt=""><div class="lens glint" id="glint_a"></div><div class="lens glint" id="glint_b"></div><canvas class="lens lensref" id="ref_a" width="64" height="64"></canvas><canvas class="lens lensref" id="ref_b" width="64" height="64"></canvas><div class="facelit" id="faceglow"></div><div class="facelit" id="facerim"></div></div></div>
+    <div class="p" data-d="0.3"><div class="layer" id="screen"></div><canvas id="chart" width="160" height="380" hidden></canvas><div class="layer" id="ray"></div></div>
+    <div class="p" data-d="0.55"><img class="layer" id="lamp" src="/scene/lamp.png" alt=""><div class="layer" id="bulb"></div></div>
+    <canvas id="dust"></canvas>
+        <div id="vignette"></div>
+  </div>
+
+  <div class="hud">
+    <div class="r" id="status">
+      <span class="badge" id="modeBadge"><span class="dot"></span><span id="modeText">paper</span></span>
+      <span class="badge" id="stateBadge"><span class="dot"></span><span id="stateText">working</span></span>
+    </div>
+
+    <div class="r" id="sched">
+      <span data-m="360"><b>6:00</b>research</span><span data-m="540"><b>9:00</b>refresh</span><span data-m="575"><b>9:35</b>execute</span><span data-m="945"><b>15:45</b>review</span><span data-m="965"><b>16:05</b>report</span>
+    </div>
+
+    <div class="r" id="race">
+      <div class="edge mono" id="edge">--<small>edge over SPY since the start</small></div>
+      <div class="race-row bot"><span class="lbl">him</span><div class="track"><i id="botBar"></i></div><span class="mono" id="botRet">--</span></div>
+      <div class="race-row spy"><span class="lbl">SPY</span><div class="track"><i id="spyBar"></i></div><span class="mono" id="spyRet">--</span></div>
+    </div>
+
+    <div class="r" id="equity" onclick="this.classList.toggle('open')">
+      <span class="mono" id="eq">--</span>
+      <div class="kv big"><span>today</span><span class="mono" id="dayPnl">--</span></div>
+      <div class="more">
+        <div class="kv"><span>since start</span><span class="mono" id="pnl">--</span></div>
+        <div class="kv"><span>closed trades</span><span class="mono" id="closed">--</span></div>
+        <div class="kv"><span>hit rate</span><span class="mono" id="hit">--</span></div>
+      </div>
+    </div>
+
+    <div class="r" id="positions"><h4>positions <span id="posN"></span></h4><div id="posList"></div></div>
+
+    <div class="r" id="theses"><h4>today's theses <span id="thN"></span></h4><div id="thList"></div></div>
+
+    <div class="r" id="controls">
+      <h4>Controls</h4>
+      <button onclick="run('research')">research</button>
+      <button onclick="run('execute')">execute</button>
+      <button onclick="run('review')">review</button>
+      <button onclick="run('report')">report</button>
+      <button onclick="confirmRun('resume','Resume trading and reset the baseline to now?')">resume</button>
+      <button class="kill" onclick="confirmRun('kill','Kill: cancel all orders, sell every position, halt until you resume. Continue?')">kill</button>
+    </div>
+
+    <div class="r" id="dial">
+      <div class="dial-head"><h4>aggression</h4><span class="dial-name mono" id="dialName">--</span></div>
+      <div class="rail"><i id="railDot"></i></div>
+      <div class="dial-body">
+        <input type="range" id="dialRange" min="1" max="10" step="1" value="5" aria-label="Aggression level" oninput="previewDial(this.value)" onchange="setDial(this.value)">
+        <div class="ticks"><span>1 sleeping</span><span>5 balanced</span><span>10 full send</span></div>
+        <div class="dial-desc" id="dialDesc"></div>
+        <details class="knobs"><summary>fine control</summary><div class="knobgrid" id="knobs"></div></details>
+      </div>
+    </div>
+
+    <div class="r" id="logwrap"><div id="log"></div></div>
+
+    <div class="r" id="chat">
+      <div id="msgs"><div class="msg a">Online. Ask me why, ask me how, or tell me what to change.</div></div>
+      <div class="chatin">
+        <textarea id="chatIn" placeholder="Talk to him" aria-label="Message" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
+        <button class="talk" id="talkBtn" onclick="toggleVoice()" title="Talk to Ming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button class="go" onclick="send()">send</button>
+      </div>
+      <div id="voiceState"></div>
+    </div>
+    <div id="brain">brain not connected: add OPENAI_API_KEY in Railway</div>
+    <div id="confirm"><div class="box"><b id="cfTitle"></b><p id="cfText"></p><div class="row"><button onclick="cfAnswer(false)">no</button><button class="yes" id="cfYes" onclick="cfAnswer(true)">yes</button></div></div></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+<script>(function fit(){const f=()=>document.documentElement.style.setProperty('--fit',Math.min(innerWidth/1920,innerHeight/1080));f();addEventListener('resize',f)})();</script>
+
+<script>
+const $=s=>document.querySelector(s);
+const fmt=(n,d=2)=>Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const sign=(n,d=2)=>(n>=0?'+':'')+fmt(n,d);
+const cls=n=>n>=0?'up':'down';
+const LABELS={capital_cap:'Capital cap $',loss_cap_daily_pct:'Daily loss %',loss_cap_total_pct:'Total loss %',max_positions:'Max positions',max_position_pct:'Per name %',max_sector_positions:'Per sector',stop_loss_pct:'Stop %',trail_trigger_pct:'Trail trigger %',trail_pct:'Trail %',take_profit_pct:'Take profit %',min_conviction:'Min conviction',min_price:'Min price $'};
+let history=[],PRESETS=null;
+
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2400)}
+/* ---------- API ---------- */
+async function api(p,o){
+  const r=await fetch(p,Object.assign({headers:{'Content-Type':'application/json'}},o||{}));
+  if(r.status===401){location.reload();return {}}
+  if(!r.ok){let m='';try{m=(await r.json()).detail||''}catch(e){}throw new Error(m||('HTTP '+r.status))}
+  return r.json();
+}
+let aggression=5;
+
+/* ---------- voice: OpenAI Realtime over WebRTC ---------- */
+const VOICE={on:false,speaking:false,listening:false,pc:null,dc:null,mic:null,audio:null};
+function vstate(t){$('#voiceState').textContent=t||''}
+function vbtn(){const b=$('#talkBtn');b.className='talk'+(VOICE.on?' on':'')+(VOICE.speaking?' speaking':VOICE.listening?' listening':'')}
+async function toggleVoice(){if(VOICE.on)return stopVoice();
+  try{
+    vstate('connecting');
+    const sess=await api('/api/voice/session',{method:'POST'});
+    if(sess.error)throw new Error(sess.error);
+    const pc=new RTCPeerConnection();VOICE.pc=pc;
+    VOICE.audio=new Audio();VOICE.audio.autoplay=true;pc.ontrack=e=>{VOICE.audio.srcObject=e.streams[0]};
+    VOICE.mic=await navigator.mediaDevices.getUserMedia({audio:true});pc.addTrack(VOICE.mic.getTracks()[0]);
+    const dc=pc.createDataChannel('oai-events');VOICE.dc=dc;dc.onmessage=onVoiceEvent;
+    const offer=await pc.createOffer();await pc.setLocalDescription(offer);
+    const r=await fetch('https://api.openai.com/v1/realtime/calls?model='+encodeURIComponent(sess.model),{method:'POST',body:offer.sdp,headers:{Authorization:'Bearer '+sess.client_secret,'Content-Type':'application/sdp'}});
+    if(!r.ok)throw new Error('realtime '+r.status);
+    await pc.setRemoteDescription({type:'answer',sdp:await r.text()});
+    VOICE.on=true;VOICE.listening=true;vbtn();vstate('listening');addMsg('v','— voice on —');
+  }catch(e){vstate('');toast('Voice failed: '+e.message);stopVoice()}
+}
+function stopVoice(){try{VOICE.dc&&VOICE.dc.close();VOICE.pc&&VOICE.pc.close();VOICE.mic&&VOICE.mic.getTracks().forEach(t=>t.stop())}catch(e){}
+  if(VOICE.on)addMsg('v','— voice off —');VOICE.on=VOICE.speaking=VOICE.listening=false;VOICE.pc=VOICE.dc=VOICE.mic=null;vbtn();vstate('')}
+let vLine=null;
+async function onVoiceEvent(ev){let m;try{m=JSON.parse(ev.data)}catch(e){return}
+  const t=m.type||'';
+  if(t==='input_audio_buffer.speech_started'){VOICE.listening=true;VOICE.speaking=false;vbtn();vstate('listening')}
+  else if(t==='response.created'){VOICE.speaking=true;vbtn();vstate('Ming')}
+  else if(t==='response.output_audio_transcript.delta'||t==='response.audio_transcript.delta'){if(!vLine)vLine=addMsg('a','');vLine.textContent+=m.delta||''; $('#msgs').scrollTop=1e9}
+  else if(t==='response.output_audio_transcript.done'||t==='response.audio_transcript.done'){vLine=null}
+  else if(t==='response.done'){VOICE.speaking=false;vbtn();vstate('listening');load()}
+  else if(t==='conversation.item.input_audio_transcription.completed'){if(m.transcript)addMsg('user',m.transcript)}
+  else if(t==='response.function_call_arguments.done'){
+    let args={};try{args=JSON.parse(m.arguments||'{}')}catch(e){}
+    vstate('working: '+m.name);
+    const out=await api('/api/voice/tool',{method:'POST',body:JSON.stringify({name:m.name,arguments:args})});
+    VOICE.dc.send(JSON.stringify({type:'conversation.item.create',item:{type:'function_call_output',call_id:m.call_id,output:JSON.stringify(out)}}));
+    VOICE.dc.send(JSON.stringify({type:'response.create'}));
+  }
+  else if(t==='error'){toast('Voice: '+(m.error&&m.error.message||'error'))}
+}
+
+/* ---------- mood drives the room ---------- */
+function setMood(s){
+  const st=$('#stage'); st.className='stage';
+  const workday=s.workday!==false;
+  let mood='working',glow='rgba(236,240,246,.55)',type='.42s',dim='.88',text='working';
+  MKT=s.day_pnl>0?1:s.day_pnl<0?-1:0; // market direction drives the tint of everything the screen touches
+  if(s.halted){mood='halted';glow='rgba(228,230,236,.45)';dim='.64';text='halted'}
+  else if(!workday&&!s.market_open){mood='asleep';glow='rgba(200,204,212,.12)';dim='.52';text='after hours'}
+  else if(s.day_pnl>0){mood='winning';glow='rgba(160,235,195,.6)';type='.34s';text='green day'}
+  else if(s.day_pnl<0){mood='losing';glow='rgba(222,178,180,.6)';type='.6s';text='red day'}
+  else if(!s.market_open){text='pre-market'}
+  st.classList.add(mood);
+  Object.assign(MOTION,{legs:mood==='asleep'?.2:1,typing:(mood==='asleep'||mood==='halted')?0:1,lamp:mood==='halted'?0:1,head:mood==='asleep'?.4:1,screen:mood==='asleep'?.15:mood==='halted'?.5:1});
+  document.documentElement.style.setProperty('--glow',glow);MOODGLOW=glow.match(/\d+/g).slice(0,3).map(Number);
+  document.documentElement.style.setProperty('--type',type);
+  document.documentElement.style.setProperty('--dimmer',dim);
+  $('#stateText').textContent=text; $('#stateBadge').className='badge '+(mood==='halted'?'halt':mood==='asleep'?'asleep':'');
+}
+
+/* ---------- one clock, layered noise, and a behavior system ---------- */
+const MOTION={legs:1,typing:1,lamp:1,head:1,screen:1};let MOODGLOW=[236,240,246],MKT=0;
+// how much the market color shows: rest is a hint, flashes push it further. up is allowed a little more than down.
+const TINT={up:[140,235,175],down:[240,140,140],flat:[236,240,246],restUp:.30,restDown:.20,flash:.32,candle:.15};
+(function body(){
+  const L=id=>document.getElementById(id);
+  const el={lamp:L('lamp'),bulb:L('bulb'),cone:L('cone'),pool:L('pool'),ll:L('leg_l'),lr:L('leg_r'),hl:L('hand_l'),hr:L('hand_r'),head:L('head'),scene:L('scene'),
+    screen:L('screen'),ray:L('ray'),edge:L('edge'),face:L('faceglow'),rim:L('facerim'),la:L('lens_a'),lb:L('lens_b'),ga:L('glint_a'),gb:L('glint_b')};
+  const TAU=Math.PI*2;
+  const ease=v=>v*v*(3-2*v);
+  // smooth noise from incommensurate sines: never repeats, always continuous
+  const noise=(t,seed)=>{const s=seed*7.31;return .5*Math.sin(t*.61+s)+.3*Math.sin(t*1.37+s*1.7)+.15*Math.sin(t*2.93+s*.4)+.05*Math.sin(t*6.1+s*2.2)};
+  // critically damped follow so every change of intent arrives smoothly
+  const follow=(cur,target,k)=>cur+(target-cur)*k;
+
+  // ---- behavior state ----
+  const B={typing:1,legs:1,lean:0,glance:0,shift:0,kickL:0,kickR:0};      // targets
+  const cur={typing:1,legs:1,lean:0,glance:0,shift:0,kickL:0,kickR:0};    // eased values
+  let nextEvent=2+Math.random()*3, eventEnd=0, eventName='';
+  function startEvent(t){
+    const r=Math.random();
+    if(r<.10){eventName='pause';B.typing=0;B.lean=-.6;eventEnd=t+.6+Math.random()*1.0}            // stops typing, sits back a touch
+    else if(r<.42){eventName='lean';B.lean=1;B.typing=1.3;eventEnd=t+2+Math.random()*3}            // leans into the screen
+    else if(r<.56){eventName='glance';B.glance=1;B.typing=.4;eventEnd=t+.6+Math.random()*.6}        // looks up briefly
+    else if(r<.70){eventName='shift';B.shift=1;eventEnd=t+.7+Math.random()*.5}                       // adjusts in the seat
+    else if(r<.84){eventName='kick';(Math.random()<.5?B.kickL=1:B.kickR=1);B.legs=.3;eventEnd=t+.9}  // one deliberate kick
+    else{eventName='still';B.legs=0;eventEnd=t+2+Math.random()*4}                                    // legs go still for a while
+  }
+  function endEvent(t){Object.assign(B,{typing:1,legs:1,lean:0,glance:0,shift:0,kickL:0,kickR:0});eventName='';nextEvent=t+3+Math.random()*8}
+
+  // ---- lamp as a damped pendulum with occasional nudges ----
+  let lampA=0,lampV=0,nextNudge=4+Math.random()*6;
+
+  // ---- screen flashes ----
+  let flashes=[],nextFlash=1.5+Math.random()*2;
+  function scheduleFlash(t){const big=Math.random()<.2;flashes.push({t0:t,amp:big?.45+Math.random()*.25:.15+Math.random()*.2,dec:big?1.6:1.0,att:big?.25:.4});
+    if(Math.random()<.25)flashes.push({t0:t+.5+Math.random()*.4,amp:.15+Math.random()*.15,dec:.9,att:.3});nextFlash=t+(big?5:2.5)+Math.random()*5}
+  function screenLevel(t){
+    if(t>nextFlash)scheduleFlash(t);
+    let f=0;flashes=flashes.filter(x=>t-x.t0<6);
+    for(const x of flashes){const d=t-x.t0;if(d<0)continue;const att=x.att||.06,a=d<att?ease(d/att):Math.exp(-(d-att)/x.dec);f+=x.amp*a}
+    const idle=.05*Math.sin(t*.7)+.04*Math.sin(t*1.9+1)+.015*Math.sin(t*4.3);
+    return Math.min(1.8,(1+idle+f));
+  }
+
+
+  // ---- the thing he is watching: a live candle chart drawn on the monitor and reflected in the lenses ----
+  const chartC=L('chart'),cx=chartC.getContext('2d'),refA=L('ref_a').getContext('2d'),refB=L('ref_b').getContext('2d');
+  const candles=[];let price=100,candleT=0,candleDur=2.5,cur_o=100,cur_h=100,cur_l=100,lastColor=[228,232,240],targetColor=[228,232,240];
+  for(let i=0;i<22;i++){const o=price,c=price+(Math.random()-.5)*3;candles.push({o,c,h:Math.max(o,c)+Math.random()*1.2,l:Math.min(o,c)-Math.random()*1.2});price=c}
+  cur_o=cur_h=cur_l=price;
+  function chartTick(t,dt,lv){
+    candleT+=dt;price+=(Math.random()-.5)*1.1*Math.sqrt(dt*3)+(100-price)*.002;cur_h=Math.max(cur_h,price);cur_l=Math.min(cur_l,price);
+    if(candleT>candleDur){candles.push({o:cur_o,c:price,h:cur_h,l:cur_l});if(candles.length>22)candles.shift();cur_o=cur_h=cur_l=price;candleT=0;candleDur=1.8+Math.random()*3.2;
+      const up=(MKT!==0&&Math.random()<.75)?MKT>0:price>=candles[candles.length-1].o;targetColor=MKT===0?[228,232,240]:up?[120,230,150]:[255,110,110]}
+    const all=[...candles,{o:cur_o,c:price,h:cur_h,l:cur_l}];
+    const lo=Math.min(...all.map(c=>c.l)),hi=Math.max(...all.map(c=>c.h)),W=chartC.width,H=chartC.height,pad=16;
+    const y=v=>H-pad-(v-lo)/(hi-lo+1e-6)*(H-pad*2);
+    cx.clearRect(0,0,W,H);
+    cx.fillStyle='rgba(20,40,70,.25)';cx.fillRect(0,0,W,H);
+    cx.strokeStyle='rgba(120,160,220,.16)';cx.lineWidth=1;for(let g=0;g<6;g++){const gy=pad+g*(H-pad*2)/5;cx.beginPath();cx.moveTo(0,gy);cx.lineTo(W,gy);cx.stroke()}
+    const cw=(W-20)/all.length;
+    all.forEach((c,i)=>{const up=c.c>=c.o,x=10+i*cw+cw/2,last=i===all.length-1;
+      cx.strokeStyle=up?'rgba(110,235,150,.95)':'rgba(255,105,105,.95)';cx.fillStyle=up?'rgba(60,200,110,.9)':'rgba(235,80,80,.9)';
+      cx.lineWidth=1.2;cx.beginPath();cx.moveTo(x,y(c.h));cx.lineTo(x,y(c.l));cx.stroke();
+      const top=y(Math.max(c.o,c.c)),bh=Math.max(1.5,Math.abs(y(c.o)-y(c.c)));cx.fillRect(x-cw*.32,top,cw*.64,bh);
+      if(last){cx.fillStyle='rgba(255,255,255,'+(.5+.5*Math.sin(t*9))+')';cx.fillRect(0,y(c.c),W,1)}});
+    // brightness follows the screen level so flashes light the chart too
+    cx.fillStyle='rgba(255,255,255,'+Math.max(0,(lv-1)*.35)+')';cx.fillRect(0,0,W,H);
+    // reflections: same picture, small, softly stretched across each lens
+    for(const r of [refA,refB]){r.clearRect(0,0,64,64);r.globalAlpha=.9;r.drawImage(chartC,-10,-30,84,124)}
+  }
+  // ---- expressions and blinks ----
+  // Drop-in art: PNGs the same canvas size as head.png, placed inside #head as <img class="headvar" data-expr="focused|pleased|concerned">
+  // and <img id="blink"> (eyes closed). With no art present these hooks do nothing.
+  const HEADS={};document.querySelectorAll('#head .headvar').forEach(i=>HEADS[i.dataset.expr]=i);
+  const lids=[...document.querySelectorAll('#head .lid'),L('blink')].filter(Boolean);let expr='neutral',nextExpr=6+Math.random()*8,nextBlink=2+Math.random()*4,blinkEnd=0;
+  function setExpr(name){if(name===expr)return;for(const k in HEADS)HEADS[k].style.opacity=k===name?1:0;expr=name}
+  function pickExpr(){const r=Math.random();
+    if(MKT>0)return r<.45?'pleased':r<.8?'focused':'neutral';
+    if(MKT<0)return r<.45?'concerned':r<.8?'focused':'neutral';
+    return r<.6?'focused':'neutral'}
+  function exprTick(t){
+    if(t>nextExpr){setExpr(pickExpr());nextExpr=t+4+Math.random()*16}
+    if(lids.length){if(t>nextBlink){lids.forEach(e=>e.style.opacity=1);blinkEnd=t+.11+Math.random()*.05;nextBlink=t+2.5+Math.random()*4.5+(Math.random()<.2?-2.2:0)}
+      if(blinkEnd&&t>blinkEnd){lids.forEach(e=>e.style.opacity=0);blinkEnd=0}}
+  }
+  let sw={legs:0,typing:0,lamp:0,head:0,screen:0},last=performance.now();
+  function tick(now){
+    const t=now/1000, dt=Math.min(.05,(now-last)/1000); last=now;
+    for(const k in sw)sw[k]+=(MOTION[k]-sw[k])*.02;
+    if(!eventName&&t>nextEvent)startEvent(t);
+    if(eventName&&t>eventEnd)endEvent(t);
+    for(const k in cur)cur[k]=follow(cur[k],B[k],k==='shift'?.12:k.startsWith('kick')?.18:.045);
+    const swingT=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--swing'))||2.6;
+
+    // lamp: pendulum physics, gravity pulls back, air damps, random nudges push
+    if(t>nextNudge){lampV+=(Math.random()-.5)*1.4*sw.lamp;nextNudge=t+5+Math.random()*9}
+    lampV+=(-lampA*1.05-lampV*.18)*dt*4;lampA+=lampV*dt*4;
+    const a=lampA*sw.lamp+noise(t,3)*.35*sw.lamp;
+    const bulb=.9+.1*Math.sin(t*37)*Math.sin(t*5.1)+.04*noise(t*3,9);   // faint filament flicker
+    el.lamp.style.transform=`rotate(${a.toFixed(3)}deg)`;
+    el.bulb.style.transform=`translateX(calc(-50% + ${(a*1.3).toFixed(2)}px))`;el.bulb.style.opacity=bulb.toFixed(3);
+    el.cone.style.transform=`translateX(-50%) rotate(${a.toFixed(3)}deg)`;el.cone.style.opacity=(.75+.25*bulb).toFixed(3);
+    el.pool.style.transform=`translateX(calc(-50% + ${(a*6.5).toFixed(1)}px))`;el.pool.style.opacity=(.7+.3*bulb).toFixed(3);
+
+    // legs: swing amplitude wanders, the two legs drift in and out of phase, plus single kicks
+    const legAmp=cur.legs*sw.legs*(.55+.45*ease(.5+.5*noise(t*.5,1)));
+    const p=t*TAU/swingT+noise(t*.3,2)*.8;
+    const kL=Math.sin(p)*6.5*legAmp+noise(t*1.7,4)*.6+cur.kickL*7*Math.sin(Math.min(Math.PI,(t-eventEnd+.9)*TAU/1.8));
+    const kR=Math.sin(p-.55-noise(t*.2,5)*.6)*6*legAmp+noise(t*1.9,6)*.6+cur.kickR*7*Math.sin(Math.min(Math.PI,(t-eventEnd+.9)*TAU/1.8));
+    const seat=cur.shift*1.0*Math.sin(Math.min(Math.PI,(t-eventEnd+1)*TAU/1.6));
+    el.ll.style.transform=`translateY(${seat.toFixed(2)}px) rotate(${kL.toFixed(2)}deg)`;
+    el.lr.style.transform=`translateY(${seat.toFixed(2)}px) rotate(${kR.toFixed(2)}deg)`;
+
+    // typing: bursts with irregular rhythm, occasional hesitation, hands alternate but not mechanically
+    // fast and hard: short cadence, bursts stay mostly on, sharp attack on each stroke, hands alternate tightly
+    const cadence=.22+.05*noise(t*1.3,7);
+    const burst=(.7+.3*ease(.5+.5*noise(t*1.4,8)))*cur.typing*sw.typing*(VOICE.on?(VOICE.speaking?.05:.25):1);
+    const strike=x=>Math.pow(.5-.5*Math.cos(x),1.8);            // sharper than a sine: quick down, quick up
+    const tapL=strike(t*TAU/cadence)*burst*(.75+.25*noise(t*5,10));
+    const tapR=strike(t*TAU/cadence+Math.PI*(.9+.1*noise(t*.6,11)))*burst*(.75+.25*noise(t*5,12));
+    const lean=cur.lean;
+    el.hl.style.transform=`translate(${(-1.5*lean-1.0*tapL).toFixed(2)}px,${(seat-3.6*tapL).toFixed(2)}px) rotate(${(-4.8*tapL).toFixed(2)}deg)`;
+    el.hr.style.transform=`translate(${(-1.5*lean-.9*tapR).toFixed(2)}px,${(seat-3.4*tapR).toFixed(2)}px) rotate(${(-4.4*tapR).toFixed(2)}deg)`;
+
+    // head: breathing, micro drift, lean toward the screen, glances up, tiny coupling to the leg swing
+    const breath=Math.sin(t*TAU/4.6)*.9*sw.head;
+    const nod=noise(t*.7,13)*.5*sw.head + Math.sin(p)*.12*legAmp - lean*1.4 + cur.glance*1.6;
+    const hx=-lean*2+noise(t*.5,14)*.4, hy=breath*.8+seat+lean*.8-cur.glance*1.2+noise(t*.45,15)*.4;
+    el.head.style.transform=`translate(${hx.toFixed(2)}px,${hy.toFixed(2)}px) rotate(${nod.toFixed(2)}deg)`;
+    exprTick(t);
+
+    // screen light drives everything the monitor touches
+    const lv=screenLevel(t)*sw.screen;
+    el.screen.style.opacity='0'; // bezel highlight is already in the photo; the strip only added a sliver
+    el.face.style.opacity=(.38+.28*lv).toFixed(3); el.rim.style.opacity=(.15+.3*lv).toFixed(3);
+    const lens=`brightness(${(.92+.28*lv).toFixed(3)}) contrast(${(1+.08*lv).toFixed(3)}) saturate(${(1+.3*lv).toFixed(3)})`;
+    el.la.style.filter=lens; el.lb.style.filter=lens;
+    const g=Math.min(.55,Math.max(0,lv-1.1)*.7); el.ga.style.opacity=g.toFixed(3); el.gb.style.opacity=(g*.8).toFixed(3);
+    chartTick(t,dt,lv);if(el.edge)el.edge.style.opacity=(.82+.18*Math.min(1,Math.max(0,lv-.9))).toFixed(3);for(let i=0;i<3;i++)lastColor[i]+=(targetColor[i]-lastColor[i])*.02;
+    // market color: mood glow at rest with a hint of the day's direction; a flash pushes the direction color further, then it decays back
+    const m=MOODGLOW||[236,240,246],dir=MKT>0?TINT.up:MKT<0?TINT.down:TINT.flat;
+    const fl=Math.max(0,Math.min(1,(lv-1.05)/.7));
+    const kd=(MKT>0?TINT.restUp:MKT<0?TINT.restDown:0)+(MKT?TINT.flash*fl:0),kc=TINT.candle,km=1-kd-kc;
+    const col=[0,1,2].map(i=>Math.round(m[i]*km+dir[i]*kd+lastColor[i]*kc));
+    const rc=col.join(',');
+    el.face.style.background=`linear-gradient(100deg,rgba(${rc},.62) 0%,rgba(0,0,0,0) 62%)`;
+    const shimmer=.94+.06*Math.sin(t*1.1)*Math.sin(t*.37);
+    el.ray.style.background=`linear-gradient(to right,rgba(${rc},.7) 0%,rgba(${rc},.5) 18%,rgba(${rc},.22) 55%,rgba(${rc},0) 100%)`;
+    el.ray.style.opacity=(Math.min(.95,(.46+.4*(lv-.6))*shimmer)*sw.screen).toFixed(3);
+    el.ray.style.transform=`scaleY(${(1+.04*(lv-1)).toFixed(3)})`;
+    el.screen.style.background=`linear-gradient(to right,transparent 0%,rgba(236,240,246,.45) 45%,rgba(236,240,246,.2) 70%,transparent 100%)`;
+
+    // camera: a barely-there drift so the frame is never frozen
+    el.scene.style.transform=`translate(-50%,-50%) translate(${(noise(t*.25,20)*1.6).toFixed(2)}px,${(noise(t*.2,21)*1.2).toFixed(2)}px) rotate(${(noise(t*.15,22)*.08).toFixed(3)}deg)`;
+    requestAnimationFrame(tick);
+  }
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches)requestAnimationFrame(tick);
+})();
+
+/* ---------- dust in the light cone (sparse, soft) ---------- */
+(function dust(){
+  const c=$('#dust'),x=c.getContext('2d');let W,H,ps=[];const N=26;
+  function size(){W=c.width=c.clientWidth;H=c.height=c.clientHeight;ps=[...Array(N)].map(()=>mk(true))}
+  function mk(init){return{x:W*(.45+Math.random()*.12),y:init?H*(.18+Math.random()*.6):H*.16,r:.5+Math.random()*.9,v:.04+Math.random()*.09,d:(Math.random()-.5)*.08,a:.05+Math.random()*.14,ph:Math.random()*6}}
+  function tick(){x.clearRect(0,0,W,H);const t=performance.now()/1000;const sway=Math.sin(t*Math.PI/6.2)*W*.02;
+    for(const p of ps){p.y+=p.v;p.x+=p.d+Math.sin(t*.7+p.ph)*.05;if(p.y>H*.8)Object.assign(p,mk(false));
+      const spread=.05+(p.y/H)*.17,cx=W*.5+sway*(p.y/H);if(Math.abs(p.x-cx)>W*spread)continue;
+      x.globalAlpha=p.a*(0.6+0.4*Math.sin(t*1.3+p.ph));x.fillStyle='#ffe3b0';x.beginPath();x.arc(p.x,p.y,p.r,0,7);x.fill()}
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)requestAnimationFrame(tick)}
+  addEventListener('resize',size);size();tick();
+})();
+
+/* ---------- cursor parallax for depth ---------- */
+(function parallax(){
+  const ps=[...document.querySelectorAll('.p')];let tx=0,ty=0,cx=0,cy=0;
+  addEventListener('pointermove',e=>{const r=$('#scene').getBoundingClientRect();tx=((e.clientX-r.left)/r.width-.5);ty=((e.clientY-r.top)/r.height-.5)});
+  function tick(){cx+=(tx-cx)*.04;cy+=(ty-cy)*.04;for(const p of ps){const d=+p.dataset.d;p.style.transform=`translate(${(-cx*14*d).toFixed(2)}px,${(-cy*8*d).toFixed(2)}px)`}requestAnimationFrame(tick)}
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&matchMedia('(pointer:fine)').matches)tick();
+})();
+
+/* ---------- data ---------- */
+async function load(){
+  try{
+    const s=await api('/api/state');
+    setMood(s);
+    $('#modeText').textContent=s.mode; $('#modeBadge').className='badge'+(s.mode==='live'?' live':'');
+    $('#brain').style.display=s.brain===false?'block':'none';
+    const b=s.bot_return_pct,p=s.spy_return_pct,span=Math.max(2,Math.abs(b),Math.abs(p));
+    bar('#botBar',b,span); bar('#spyBar',p,span);
+    $('#botRet').textContent=sign(b)+'%'; $('#spyRet').textContent=sign(p)+'%';
+    $('#edge').firstChild.textContent=sign(s.edge_pts)+' pts'; $('#edge').className='edge mono '+cls(s.edge_pts);
+    $('#eq').textContent='$'+fmt(s.equity); $('#dayPnl').textContent=sign(s.day_pnl); $('#dayPnl').className='mono '+cls(s.day_pnl);
+    $('#pnl').textContent=sign(s.pnl); $('#pnl').className='mono '+cls(s.pnl);
+    $('#closed').textContent=s.closed_trades; $('#hit').textContent=s.hit_rate==null?'--':fmt(s.hit_rate,0)+'%';
+    const pl=$('#posList'); pl.innerHTML=''; $('#posN').textContent=`${s.positions.length}/${s.config.max_positions}`;
+    if(!s.positions.length)pl.innerHTML='<div class="cat">Nothing on. He is watching.</div>';
+    for(const q of s.positions){pl.insertAdjacentHTML('beforeend',`<div class="pos" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${q.symbol}</span><span class="pl mono ${cls(q.pl)}">${sign(q.pl_pct)}%<small>${sign(q.pl)}</small></span></div><div class="more"><span class="mono">${fmt(q.qty,0)} @ ${fmt(q.entry)} · stop ${q.stop?fmt(q.stop):'-'}</span><br>${q.thesis?q.thesis.catalyst:''}</div></div>`)}
+    if(!PRESETS)PRESETS=await api('/api/aggression/presets');
+    if(document.activeElement!==$('#dialRange')){$('#dialRange').value=s.aggression;previewDial(s.aggression)}
+    const k=$('#knobs'); if(!k.children.length){for(const key of Object.keys(LABELS))k.insertAdjacentHTML('beforeend',`<div><label for="k_${key}">${LABELS[key]}</label><input class="mono" id="k_${key}" type="number" step="any" value="${s.config[key]}" onchange="setKnob('${key}',this.value)"></div>`)}
+    else for(const key of Object.keys(LABELS)){const i=$('#k_'+key);if(document.activeElement!==i)i.value=s.config[key]}
+    const th=await api('/api/theses'); const tl=$('#thList'); tl.innerHTML=''; $('#thN').textContent=th.length||'';
+    if(!th.length)tl.innerHTML='<div class="cat">Nothing yet. Research runs at 6:00 AM ET.</div>';
+    for(const t of th)tl.insertAdjacentHTML('beforeend',`<div class="th ${t.acted?'in':''}" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${t.symbol}</span><div class="conv" title="conviction ${t.conviction}/10"><i style="width:${t.conviction*10}%"></i></div><span class="tag">${t.acted?'in':(t.reject_reason?'skip':'pending')}</span></div><div class="more"><span class="sector">${t.sector||''}${t.sector?' · ':''}conviction ${t.conviction}/10</span><br>${t.catalyst}${!t.acted&&t.reject_reason?`<br><span class="sector">${t.reject_reason}</span>`:''}</div></div>`);
+    const lg=await api('/api/log?n=14'); const le=$('#log'); le.innerHTML='<h4>Activity</h4>';
+    for(const r of lg)le.insertAdjacentHTML('beforeend',`<div><span class="mono" style="color:var(--dim)">${r.ts.slice(11,16)}</span> <span class="lv ${r.level}">${r.level}</span>${r.msg}</div>`);
+  }catch(e){toast('Load failed: '+e.message)}
+}
+function bar(sel,v,span){const e=$(sel);const w=Math.min(50,Math.abs(v)/span*50);if(v>=0){e.style.left='50%';e.style.width=w+'%'}else{e.style.left=(50-w)+'%';e.style.width=w+'%'}}
+
+/* ---------- dial ---------- */
+function previewDial(v){const rd=$('#railDot');if(rd)rd.style.left=((v-1)/9*100)+'%';v=+v;const p=PRESETS&&PRESETS[v];const n=$('#dialName');n.textContent=p?p.name:v;n.className='dial-name mono'+(v>=8?' danger':v>=7?' hot':'');
+  $('#dialDesc').textContent=p?`${p.max_positions} positions max · ${p.max_position_pct}% per name · ${p.stop_loss_pct}% stop · conviction ${p.min_conviction}+ · daily cap ${p.loss_cap_daily_pct}% · total cap ${p.loss_cap_total_pct}%`+(v>=8?' · past where I would put it.':''):'';
+  document.documentElement.style.setProperty('--swing',(3.2-v*.16)+'s')}
+async function setDial(v){try{const r=await api('/api/aggression',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level:+v})});toast(`Aggression ${r.level}: ${r.name}`);load()}catch(e){toast('Failed: '+e.message)}}
+async function setKnob(key,val){try{await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,value:Number(val)})});toast(LABELS[key]+' saved')}catch(e){toast('Failed: '+e.message);load()}}
+
+/* ---------- controls ---------- */
+async function run(cmd){const b=[...document.querySelectorAll('#controls button')].find(x=>x.textContent.trim()===cmd);if(b)b.classList.add('busy');toast('Running '+cmd);
+  try{await api('/api/run/'+cmd,{method:'POST'});toast(cmd+' done')}catch(e){toast('Failed: '+e.message)}finally{if(b)b.classList.remove('busy');load()}}
+let cfResolve=null;
+function ask(title,text,yes){return new Promise(res=>{cfResolve=res;$('#cfTitle').textContent=title;$('#cfText').textContent=text;$('#cfYes').textContent=yes||'yes';$('#confirm').classList.add('show')})}
+function cfAnswer(v){$('#confirm').classList.remove('show');if(cfResolve)cfResolve(v);cfResolve=null}
+async function confirmRun(cmd,msg){if(await ask(cmd,msg,cmd))run(cmd)}
+
+/* ---------- chat ---------- */
+function addMsg(role,text,think){const m=$('#msgs');const d=document.createElement('div');d.className='msg '+(role==='user'?'u':role==='v'?'v':'a')+(think?' think':'');d.textContent=text;m.appendChild(d);m.scrollTop=m.scrollHeight;return d}
+async function send(){const i=$('#chatIn');const t=i.value.trim();if(!t)return;i.value='';addMsg('user',t);history.push({role:'user',content:t});const w=addMsg('a','...',true);
+  try{const r=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history})});w.remove();addMsg('a',r.reply);history.push({role:'assistant',content:r.reply});load()}catch(e){w.remove();addMsg('a','Error: '+e.message)}}
+
+function schedTick(){const et=new Date(new Date().toLocaleString('en-US',{timeZone:'America/New_York'}));const m=et.getHours()*60+et.getMinutes(),wk=et.getDay()>0&&et.getDay()<6;let marked=false;
+  for(const sp of document.querySelectorAll('#sched span')){const mm=+sp.dataset.m;sp.className='';if(!wk)continue;if(mm<m)sp.className='done';else if(!marked){sp.className='next';marked=true}}}
+schedTick();setInterval(schedTick,30000);
+load(); setInterval(load,60000);
+</script>
+</body>
+</html>

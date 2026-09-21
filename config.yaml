@@ -1,0 +1,64 @@
+# Ming: every rule in one place. The dashboard can change the keys listed under editable; changes land in DATA_DIR/overrides.json.
+mode: paper                # paper | live  (live also needs LIVE_CONFIRM=YES in the environment)
+timezone: America/New_York
+
+schedule:                  # weekdays, Eastern
+  research: "06:00"
+  refresh:  "09:00"
+  execute:  "09:35"
+  review:   "15:45"
+  report:   "16:05"
+
+risk:
+  capital_cap: 10000       # dollars Ming is allowed to deploy, regardless of account size
+  loss_cap_daily_pct: 3    # down this much on the day -> flatten and halt
+  loss_cap_total_pct: 10   # down this much from the baseline -> flatten and halt
+  max_positions: 5
+  max_position_pct: 15     # of capital_cap, per name
+  max_sector_positions: 2
+  stop_loss_pct: 4
+  trail_trigger_pct: 5     # once up this much, the stop starts trailing
+  trail_pct: 4
+  take_profit_pct: 12
+  min_conviction: 7
+  min_price: 5
+
+editable: [capital_cap, loss_cap_daily_pct, loss_cap_total_pct, max_positions, max_position_pct, max_sector_positions, stop_loss_pct, trail_trigger_pct, trail_pct, take_profit_pct, min_conviction, min_price]
+
+aggression:                # ten presets; the dial sets one and it overrides the matching risk keys
+  1:  {name: Sleeping giant, max_positions: 2, max_position_pct: 8,  stop_loss_pct: 3, min_conviction: 9, loss_cap_daily_pct: 1.5, loss_cap_total_pct: 5}
+  2:  {name: Cautious,       max_positions: 3, max_position_pct: 10, stop_loss_pct: 3, min_conviction: 8, loss_cap_daily_pct: 2,   loss_cap_total_pct: 6}
+  3:  {name: Careful,        max_positions: 3, max_position_pct: 12, stop_loss_pct: 3.5, min_conviction: 8, loss_cap_daily_pct: 2, loss_cap_total_pct: 7}
+  4:  {name: Measured,       max_positions: 4, max_position_pct: 13, stop_loss_pct: 4, min_conviction: 7, loss_cap_daily_pct: 2.5, loss_cap_total_pct: 8}
+  5:  {name: Balanced,       max_positions: 5, max_position_pct: 15, stop_loss_pct: 4, min_conviction: 7, loss_cap_daily_pct: 3,   loss_cap_total_pct: 10}
+  6:  {name: Leaning in,     max_positions: 5, max_position_pct: 18, stop_loss_pct: 5, min_conviction: 7, loss_cap_daily_pct: 3.5, loss_cap_total_pct: 12}
+  7:  {name: Forward,        max_positions: 6, max_position_pct: 20, stop_loss_pct: 5, min_conviction: 6, loss_cap_daily_pct: 4,   loss_cap_total_pct: 14}
+  8:  {name: Hot,            max_positions: 6, max_position_pct: 22, stop_loss_pct: 6, min_conviction: 6, loss_cap_daily_pct: 5,   loss_cap_total_pct: 16}
+  9:  {name: Full tilt,      max_positions: 7, max_position_pct: 25, stop_loss_pct: 7, min_conviction: 5, loss_cap_daily_pct: 6,   loss_cap_total_pct: 18}
+  10: {name: Full send,      max_positions: 8, max_position_pct: 30, stop_loss_pct: 8, min_conviction: 5, loss_cap_daily_pct: 8,   loss_cap_total_pct: 20}
+
+llm:
+  model: gpt-5.6-sol        # Sol; override with OPENAI_MODEL
+  voice_model: gpt-realtime-2.1-mini
+  voice: cedar              # OpenAI voice name; override with OPENAI_VOICE
+  max_theses: 8
+
+sources:                    # research reads these every run, in this order. Tier 1 is primary, tier 3 is confirmation only.
+  tier1:
+    - {name: SEC 8-K filings,        url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&count=100&output=atom"}
+    - {name: Business Wire,          url: "https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEFpRVQ=="}
+    - {name: PR Newswire,            url: "https://www.prnewswire.com/rss/news-releases-list.rss"}
+    - {name: GlobeNewswire,          url: "https://www.globenewswire.com/RssFeed/subjectcode/10-Earnings%20Releases%20and%20Operating%20Results/feedTitle/GlobeNewswire%20-%20Earnings"}
+  tier2:
+    - {name: CNBC markets,           url: "https://www.cnbc.com/id/20910258/device/rss/rss.html"}
+    - {name: CNBC top news,          url: "https://www.cnbc.com/id/100003114/device/rss/rss.html"}
+    - {name: MarketWatch top,        url: "https://feeds.content.dowjones.io/public/rss/mw_topstories"}
+    - {name: MarketWatch pulse,      url: "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines"}
+    - {name: Benzinga,               url: "https://www.benzinga.com/feed"}
+    - {name: Investing.com news,     url: "https://www.investing.com/rss/news_25.rss"}
+  firecrawl_queries:
+    - "premarket movers today"
+    - "stocks moving premarket today earnings guidance"
+    - "FDA approval today stock"
+    - "analyst upgrade today stock"
+  excluded_domains: [reddit.com, x.com, twitter.com, fool.com, seekingalpha.com, stocktwits.com]

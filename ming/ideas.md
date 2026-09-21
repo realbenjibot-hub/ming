@@ -1,0 +1,1 @@
+- [2026-09-20 00:00] (operator) Two weeks on paper first. Long only. Catalyst trades only; sit out when nothing is clean.
