@@ -72,8 +72,10 @@ class Research:
             web += self._firecrawl(q)
         parts["web"] = web
         parts["ideas"] = ideas()
-        day = dt.datetime.now().strftime("%A %Y-%m-%d")
-        pack = [f"DATE: {day}. PASS: {'9:00 refresh' if refresh else '6:00 full research'}.",
+        from zoneinfo import ZoneInfo
+        now = dt.datetime.now(ZoneInfo(self.cfg.tz)); et = now.strftime("%A %Y-%m-%d %H:%M %Z")
+        pass_name = "9:00 pre-open refresh" if refresh else ("6:00 full research" if now.hour < 8 else f"full research run at {now.strftime('%H:%M')} ET (market {'open' if 9 <= now.hour < 16 else 'closed'})")
+        pack = [f"NOW: {et}. PASS: {pass_name}. Everything in this pack timestamped before NOW has already happened; judge whether the move is already in the price.",
                 "\nOPERATOR DIRECTION (ideas.md):\n" + parts["ideas"]]
         for k, title in [("tier1", "TIER 1: SEC FILINGS AND PRESS WIRES (primary sources)"), ("tier2", "TIER 2: WIRE SERVICES AND MARKET NEWS"),
                          ("alpaca_news", "ALPACA NEWS FEED"), ("movers", "MOVERS (above the price floor; prior session unless pre-market)"), ("web", "WEB CONFIRMATION (Firecrawl)")]:
