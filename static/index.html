@@ -161,7 +161,9 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
 .knobgrid label{display:block;font-size:.72em;color:var(--dim)}
 .knobgrid input{width:100%;background:none;border:0;border-bottom:1px solid var(--rule);color:var(--fg);font-size:.9em;padding:.15em 0}
 /* theses: name, conviction bar, verdict; catalyst on click */
-#theses{right:var(--gx);top:10%;width:var(--gw);max-height:34%;overflow:auto;scrollbar-width:none}
+#right{right:var(--gx);top:10%;bottom:4%;width:var(--gw);display:flex;flex-direction:column;gap:2.2em;opacity:1}
+#right .r{position:static;min-height:0}
+#theses{flex:0 1 auto;max-height:46%;overflow:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to bottom,#000 92%,transparent);mask-image:linear-gradient(to bottom,#000 92%,transparent);padding-bottom:1em}
 .th{padding:.5em 0;border-top:1px solid var(--rule);cursor:pointer}
 .th:first-child{border-top:0}
 .th .line{display:grid;grid-template-columns:4.2em 1fr 3.6em;align-items:center;gap:1em}
@@ -173,7 +175,7 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
 .th.in .tag{color:var(--warm)}
 .th .more .sector{color:var(--dim2)}
 /* activity: last three lines, all on hover */
-#logwrap{right:var(--gx);top:38%;width:var(--gw);height:26%}
+#logwrap{flex:1 1 auto;min-height:6em}
 #log{font-size:.82em;height:100%;overflow:auto;scrollbar-width:none;color:var(--soft);-webkit-mask-image:linear-gradient(to bottom,#000 80%,transparent);mask-image:linear-gradient(to bottom,#000 80%,transparent)}
 #log h4{text-transform:lowercase}
 #log div{padding:.2em 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .3s}
@@ -182,9 +184,10 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
 #log .lv{display:none}
 #log div .mono{color:var(--dim2);margin-right:.7em}
 /* chat */
-#chat{right:var(--gx);bottom:4%;width:var(--gw);height:22%;display:flex;flex-direction:column;justify-content:flex-end;gap:.7em}
+#chat{flex:0 0 auto;height:30%;display:flex;flex-direction:column;justify-content:flex-end;gap:.7em;position:relative}
+#chat:before{content:"";position:absolute;left:-8%;right:-8%;top:-30%;bottom:-6%;background:radial-gradient(ellipse at 50% 70%,rgba(0,0,0,.72),rgba(0,0,0,.45) 55%,transparent 100%);z-index:-1;pointer-events:none}
 #msgs{overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:.5em;-webkit-mask-image:linear-gradient(to bottom,transparent,#000 22%);mask-image:linear-gradient(to bottom,transparent,#000 22%);padding-top:1.5em}
-.msg{max-width:92%;font-size:.9em;line-height:1.45;white-space:pre-wrap;color:var(--soft)}
+.msg{max-width:94%;font-size:.98em;line-height:1.5;white-space:pre-wrap;color:var(--soft)}
 .msg.a{align-self:flex-start;color:var(--fg)}
 .msg.u{align-self:flex-end;text-align:right;color:var(--warm)}
 .msg.think{color:var(--dim);font-style:italic}
@@ -259,8 +262,6 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
 
     <div class="r" id="positions"><h4>positions <span id="posN"></span></h4><div id="posList"></div></div>
 
-    <div class="r" id="theses"><h4>today's theses <span id="thN"></span></h4><div id="thList"></div></div>
-
     <div class="r" id="controls">
       <h4>Controls</h4>
       <button onclick="run('research')">research</button>
@@ -282,16 +283,20 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
       </div>
     </div>
 
+    <div class="r" id="right">
+    <div class="r" id="theses"><h4>today's theses <span id="thN"></span></h4><div id="thList"></div></div>
+
     <div class="r" id="logwrap"><div id="log"></div></div>
 
     <div class="r" id="chat">
       <div id="msgs"><div class="msg a">Online. Ask me why, ask me how, or tell me what to change.</div></div>
       <div class="chatin">
-        <textarea id="chatIn" placeholder="Talk to him" aria-label="Message" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
+        <textarea id="chatIn" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" spellcheck="false" placeholder="Talk to him" aria-label="Message" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
         <button class="talk" id="talkBtn" onclick="toggleVoice()" title="Talk to Ming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
         <button class="go" onclick="send()">send</button>
       </div>
       <div id="voiceState"></div>
+    </div>
     </div>
     <div id="brain">brain not connected: add OPENAI_API_KEY in Railway</div>
     <div id="confirm"><div class="box"><b id="cfTitle"></b><p id="cfText"></p><div class="row"><button onclick="cfAnswer(false)">no</button><button class="yes" id="cfYes" onclick="cfAnswer(true)">yes</button></div></div></div>
@@ -608,7 +613,7 @@ function cfAnswer(v){$('#confirm').classList.remove('show');if(cfResolve)cfResol
 async function confirmRun(cmd,msg){if(await ask(cmd,msg,cmd))run(cmd)}
 
 /* ---------- chat ---------- */
-function addMsg(role,text,think){const m=$('#msgs');const d=document.createElement('div');d.className='msg '+(role==='user'?'u':role==='v'?'v':'a')+(think?' think':'');d.textContent=text;m.appendChild(d);m.scrollTop=m.scrollHeight;return d}
+function addMsg(role,text,think){const m=$('#msgs');const d=document.createElement('div');d.className='msg '+(role==='user'?'u':role==='v'?'v':'a')+(think?' think':'');d.textContent=String(text).replace(/\*\*/g,'').replace(/^#+\s?/gm,'');m.appendChild(d);m.scrollTop=m.scrollHeight;return d}
 async function send(){const i=$('#chatIn');const t=i.value.trim();if(!t)return;i.value='';addMsg('user',t);history.push({role:'user',content:t});const w=addMsg('a','...',true);
   try{const r=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history})});w.remove();addMsg('a',r.reply);history.push({role:'assistant',content:r.reply});load()}catch(e){w.remove();addMsg('a','Error: '+e.message)}}
 
