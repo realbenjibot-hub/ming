@@ -29,7 +29,7 @@ Read with `ming.md` whenever a day book is running (`hold_mode` day or both). Th
 
 ## Exits
 
-- The stop and target are set by the engine at entry from the stock's own average daily range: half a day's range for the stop, one day's range for the target, clamped. A quiet stock gets a tight stop; a wild one gets room. You do not move a stop down. Ever.
+- The stop and target are set by the engine at entry from the stock's own average daily range: half a day's range for the stop, two days' range for the target, clamped. The target is a ceiling; the trailing stop is what usually ends a winner. A quiet stock gets a tight stop; a wild one gets room. You do not move a stop down. Ever.
 - The engine trails the stop once the trade is up by the stop distance.
 - No entries in the midday lull, 11:30 to 1:30 PM ET. Hunts skip it.
 - If the reason you bought is gone before the target, say so at the next hunt; the engine exits.
