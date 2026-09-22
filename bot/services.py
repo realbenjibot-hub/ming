@@ -114,6 +114,11 @@ class Services:
         out = ideasmod.add_idea(text, who); self.j.log("IDEA", text[:140]); return out
     def ideas(self): return ideasmod.ideas()
 
+    def _et(self, iso):
+        try:
+            from zoneinfo import ZoneInfo
+            return dt.datetime.fromisoformat(iso).astimezone(ZoneInfo(self.cfg.tz)).strftime("%H:%M")
+        except Exception: return iso[11:16]
     def context_for_agent(self):
         """Compact context for chat and voice: state, theses, positions, last log lines, ideas."""
         s = self.state(); th = self.theses()
@@ -122,5 +127,5 @@ class Services:
                  "POSITIONS: " + ("; ".join(f"{p['symbol']} [{p.get('book','')}] {p['qty']:.0f} @ {p['entry']:.2f} now {p['price']:.2f} ({p['pl_pct']:+.1f}%) stop {p['stop'] or '-'} target +{p.get('target_pct') or '-'}%" for p in s["positions"]) or "none"),
                  "THESES TODAY: " + ("; ".join(f"{t['symbol']} conv {t['conviction']} {'IN' if t['acted'] else ('skip: ' + (t['reject_reason'] or 'pending'))}: {t['catalyst']}" for t in th) or "none"),
                  "IDEAS: " + self.ideas().replace("\n", " | "),
-                 "RECENT LOG: " + " | ".join(f"{r['ts'][11:16]} {r['level']} {r['msg']}" for r in self.j.logs(12))]
+                 "RECENT LOG (ET): " + " | ".join(f"{self._et(r['ts'])} {r['level']} {r['msg']}" for r in self.j.logs(12))]
         return "\n".join(lines)

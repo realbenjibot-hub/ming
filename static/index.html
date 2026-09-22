@@ -599,7 +599,7 @@ async function load(){
     if(!th.length)tl.innerHTML='<div class="cat">Nothing yet. Research runs at 6:00 AM ET.</div>';
     for(const t of th)tl.insertAdjacentHTML('beforeend',`<div class="th ${t.acted?'in':''}" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${t.symbol}${t.book?'<small style="font-weight:400;opacity:.55;margin-left:.5em;font-size:.7em">'+t.book+'</small>':''}</span><div class="conv" title="conviction ${t.conviction}/10"><i style="width:${t.conviction*10}%"></i></div><span class="tag">${t.acted?'in':(t.reject_reason?'skip':'pending')}</span></div><div class="more"><span class="sector">${t.sector||''}${t.sector?' · ':''}conviction ${t.conviction}/10</span><br>${t.catalyst}${!t.acted&&t.reject_reason?`<br><span class="sector">${t.reject_reason}</span>`:''}</div></div>`);
     const lg=await api('/api/log?n=14'); const le=$('#log'); le.innerHTML='<h4>Activity</h4>';
-    for(const r of lg)le.insertAdjacentHTML('beforeend',`<div><span class="mono" style="color:var(--dim)">${r.ts.slice(11,16)}</span> <span class="lv ${r.level}">${r.level}</span>${r.msg}</div>`);
+    for(const r of lg)le.insertAdjacentHTML('beforeend',`<div><span class="mono" style="color:var(--dim)">${et(r.ts)}</span> <span class="lv ${r.level}">${r.level}</span>${r.msg}</div>`);
   }catch(e){toast('Load failed: '+e.message)}
 }
 function bar(sel,v,span){const e=$(sel);const w=Math.min(50,Math.abs(v)/span*50);if(v>=0){e.style.left='50%';e.style.width=w+'%'}else{e.style.left=(50-w)+'%';e.style.width=w+'%'}}
@@ -635,6 +635,7 @@ async function send(){const i=$('#chatIn');const t=i.value.trim();if(!t)return;i
   try{const r=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history})});w.remove();addMsg('a',r.reply);history.push({role:'assistant',content:r.reply});load()}catch(e){w.remove();addMsg('a','Error: '+e.message)}}
 
 let schedKey='';
+function et(iso){try{return new Date(iso).toLocaleTimeString('en-US',{timeZone:'America/New_York',hour12:false,hour:'2-digit',minute:'2-digit'})}catch(e){return iso.slice(11,16)}}
 function schedTick(){const et=new Date(new Date().toLocaleString('en-US',{timeZone:'America/New_York'}));const m=et.getHours()*60+et.getMinutes(),wk=et.getDay()>0&&et.getDay()<6;let marked=false;
   for(const sp of document.querySelectorAll('#sched span')){const mm=+sp.dataset.m;sp.className='';if(!wk)continue;if(mm<m)sp.className='done';else if(!marked){sp.className='next';marked=true}}}
 schedTick();setInterval(schedTick,30000);
