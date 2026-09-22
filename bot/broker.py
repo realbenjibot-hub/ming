@@ -35,6 +35,9 @@ class FakeBroker:
             if v["id"] == order_id: v["stop"] = stop; return order_id
         return order_id
     def cancel_all(self): self.stops.clear()
+    def cancel_order(self, order_id):
+        for s, v in list(self.stops.items()):
+            if v["id"] == order_id: self.stops.pop(s)
     def close_all(self):
         for s in list(self.pos): self.market_sell(s)
     def clock(self):
@@ -103,6 +106,8 @@ class AlpacaBroker:
         return str(o.id)
     def cancel_all(self):
         self.tc.cancel_orders()
+    def cancel_order(self, order_id):
+        self.tc.cancel_order_by_id(order_id)
     def close_all(self):
         self.tc.cancel_orders(); self.tc.close_all_positions(cancel_orders=True)
     def clock(self):

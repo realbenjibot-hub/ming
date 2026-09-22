@@ -57,6 +57,18 @@ class Risk:
         return True
 
     # ---- entries ----
+    def entry_window(self):
+        """Day mode: entries only while the market is open and before last_entry. Returns (ok, why)."""
+        if self.cfg.hold_mode != "day": return True, None
+        from zoneinfo import ZoneInfo
+        now = dt.datetime.now(ZoneInfo(self.cfg.tz)); hhmm = now.strftime("%H:%M")
+        if now.weekday() > 4: return False, "weekend"
+        try: is_open = bool(self.b.clock().get("is_open"))
+        except Exception: is_open = "09:30" <= hhmm < "16:00"
+        if not is_open: return False, "market closed"
+        if hhmm >= self.cfg.day.get("last_entry", "15:00"): return False, f"past last entry {self.cfg.day.get('last_entry', '15:00')} ET"
+        return True, None
+
     def size(self, thesis, positions, prices):
         """Return (qty, stop, reject_reason). qty 0 with a reason means skip."""
         r = self.cfg.risk; sym = thesis["symbol"]

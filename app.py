@@ -1,11 +1,13 @@
 """Ming: one process. FastAPI serves the stage, the API, the chat, and the voice handshake; APScheduler runs the day inside the same process."""
 import os, secrets, datetime as dt
+from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Depends, HTTPException, Request, Query
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from bot.services import Services
 from bot.chat import Chat
 from bot import voice as voicemod
@@ -60,7 +62,7 @@ def run(command: str):
 async def config(req: Request):
     body = await req.json(); out = None
     for k, v in body.items():
-        try: out = svc.set_config(k, v)
+        try: out = svc.set_hold_mode(v) if k == "hold_mode" else svc.set_config(k, v)
         except ValueError as e: raise HTTPException(400, str(e))
     return {"ok": True, "config": out}
 @app.post("/api/aggression", dependencies=[Depends(auth)])
@@ -84,18 +86,35 @@ async def voice_tool(req: Request):
 
 # ---- scheduler: weekdays, Eastern ----
 sched = BackgroundScheduler(timezone=svc.cfg.tz)
-def _job(cmd):
+def _job(cmd, only_mode=None, window=None):
+    """window=(start, end) in HH:MM ET limits an interval job to part of the day; only_mode limits it to one hold mode."""
     def f():
+        if only_mode and svc.cfg.hold_mode != only_mode: return
+        if window:
+            now = dt.datetime.now(ZoneInfo(svc.cfg.tz)); hhmm = now.strftime("%H:%M")
+            if now.weekday() > 4 or not (window[0] <= hhmm < window[1]): return
         try: svc.run(cmd)
+        except RuntimeError as e:
+            if cmd not in ("scan",): svc.j.log("WARN", f"scheduled {cmd} skipped: {e}")
         except Exception as e: svc.j.log("ERROR", f"scheduled {cmd} failed: {type(e).__name__}: {str(e)[:200]}")
     return f
-for cmd, hhmm in svc.cfg.schedule.items():
-    h, m = hhmm.split(":")
-    sched.add_job(_job(cmd), CronTrigger(day_of_week="mon-fri", hour=int(h), minute=int(m)), id=cmd, misfire_grace_time=600)
+def _cron(hhmm):
+    h, m = hhmm.split(":"); return CronTrigger(day_of_week="mon-fri", hour=int(h), minute=int(m))
+SC, DAY = svc.cfg.schedule, svc.cfg.day
+for cmd in ("research", "refresh", "execute", "report"):
+    sched.add_job(_job(cmd), _cron(SC[cmd]), id=cmd, misfire_grace_time=600)
+sched.add_job(_job("review", only_mode="swing"), _cron(SC["review"]), id="review", misfire_grace_time=600)
+sched.add_job(_job("flatten", only_mode="day"), _cron(SC.get("flatten", "15:55")), id="flatten", misfire_grace_time=240)
+sched.add_job(_job("scan", only_mode="day", window=("09:36", SC.get("flatten", "15:55"))), IntervalTrigger(minutes=int(DAY.get("scan_every_min", 5))), id="scan", misfire_grace_time=60)
+sched.add_job(_job("hunt", only_mode="day", window=(DAY.get("first_hunt", "10:00"), DAY.get("last_entry", "15:00"))), IntervalTrigger(minutes=int(DAY.get("hunt_every_min", 30))), id="hunt", misfire_grace_time=120)
 @app.on_event("startup")
 def start():
     if os.environ.get("MING_NO_SCHED") != "1":
-        sched.start(); svc.j.log("INFO", "scheduler on: " + ", ".join(f"{k} {v}" for k, v in svc.cfg.schedule.items()) + " ET weekdays")
+        sched.start()
+        hm = svc.cfg.hold_mode
+        jobs = ", ".join(f"{k} {v}" for k, v in SC.items() if k not in ("review" if hm == "day" else "flatten",))
+        extra = f", scan every {DAY.get('scan_every_min', 5)}m, hunt every {DAY.get('hunt_every_min', 30)}m {DAY.get('first_hunt', '10:00')}-{DAY.get('last_entry', '15:00')}" if hm == "day" else ""
+        svc.j.log("INFO", f"scheduler on ({hm} mode): {jobs}{extra} ET weekdays")
 @app.on_event("shutdown")
 def stop():
     if sched.running: sched.shutdown(wait=False)

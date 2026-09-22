@@ -29,7 +29,7 @@ class Report:
         facts = "THESES TODAY:\n" + "\n".join(f"- {t['symbol']} conv {t['conviction']} {'IN' if t['acted'] else ('skip: '+(t['reject_reason'] or 'pending'))}: {t['catalyst']}" for t in th) or "none"
         facts += "\nTRADES TODAY:\n" + ("\n".join(f"- {t['side']} {t['qty']:.0f} {t['symbol']} @ {t['entry']:.2f}" + (f" -> {t['exit']:.2f} ({t['exit_reason']}) P&L {t['pl']:+.2f}" if t['status']=='closed' else f" stop {t['stop']:.2f}") for t in tr) or "none")
         if self.llm.ready:
-            m = self.llm.chat([{"role": "system", "content": persona() + "\n\nWrite the 4:05 PM daily report in your own voice. Six to ten short sentences. Lead with the number, then what you did and why, then what you would do differently. No spin."},
+            m = self.llm.chat([{"role": "system", "content": persona(self.cfg.hold_mode) + "\n\nWrite the 4:05 PM daily report in your own voice. Six to ten short sentences. Lead with the number, then what you did and why, then what you would do differently. No spin."},
                                {"role": "user", "content": head + "\n\n" + facts}], max_tokens=500)
             body = m.content.strip() if m else head
         else:

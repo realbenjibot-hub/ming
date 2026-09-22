@@ -29,6 +29,13 @@ class Config:
     def schedule(self):
         return self.raw.get("schedule", {})
     @property
+    def hold_mode(self):
+        return str(self.overrides.get("hold_mode") or self.raw.get("hold_mode", "swing"))
+    @property
+    def day(self):
+        return dict(self.raw.get("day", {}))
+    DAY_EXIT_KEYS = ("stop_loss_pct", "take_profit_pct", "trail_trigger_pct", "trail_pct")
+    @property
     def llm(self):
         d = dict(self.raw.get("llm", {}))
         d["model"] = os.environ.get("OPENAI_MODEL", d.get("model"))
@@ -49,12 +56,17 @@ class Config:
         preset = dict(self.AGGRESSION.get(self.aggression, {}))
         preset.pop("name", None)
         r.update(preset)
+        if self.hold_mode == "day":
+            r.update({k: v for k, v in self.day.items() if k in self.DAY_EXIT_KEYS})
         r.update({k: v for k, v in self.overrides.items() if k in self.EDITABLE})
         return r
     def get(self, key):
         return self.risk.get(key)
 
     def set(self, key, value):
+        if key == "hold_mode":
+            if value not in ("day", "swing"): raise ValueError("hold_mode must be day or swing")
+            self.overrides["hold_mode"] = value; self._save(); return
         if key not in self.EDITABLE:
             raise ValueError(f"{key} is not editable")
         self.overrides[key] = float(value) if key != "max_positions" and key != "max_sector_positions" and key != "min_conviction" else int(value)

@@ -13,7 +13,7 @@ def session(cfg, svc):
     key = os.environ.get("OPENAI_API_KEY")
     if not key: return {"error": "no OPENAI_API_KEY"}
     body = {"session": {"type": "realtime", "model": cfg.llm["voice_model"],
-            "instructions": persona() + VOICE_RULES + "\n\nCURRENT CONTEXT:\n" + svc.context_for_agent(),
+            "instructions": persona(cfg.hold_mode) + VOICE_RULES + "\n\nCURRENT CONTEXT:\n" + svc.context_for_agent(),
             "tools": realtime_tools(), "tool_choice": "auto",
             "audio": {"input": {"turn_detection": {"type": "semantic_vad", "eagerness": "medium"}, "transcription": {"model": "gpt-4o-mini-transcribe"}}, "output": {"voice": cfg.llm["voice"]}}}}
     try:

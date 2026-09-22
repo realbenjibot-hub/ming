@@ -22,6 +22,8 @@ class Executor:
     def execute(self, day=None, only_symbol=None):
         """9:35: take today's theses in conviction order through the rules engine."""
         if not self.r.check_caps(): self.j.log("SKIP", "halted; no entries"); return []
+        ok, why = self.r.entry_window()
+        if not ok: self.j.log("SKIP", f"no entries: {why}"); return []
         day = day or dt.date.today().isoformat()
         theses = [t for t in self.j.theses_for(day) if not t["acted"] and not t["reject_reason"]]
         if only_symbol: theses = [t for t in theses if t["symbol"] == only_symbol]
@@ -91,12 +93,16 @@ class Executor:
         self.j.log("INFO", f"operator directed {side} {symbol}")
         return {"ok": bool(done), "done": done}
 
-    def review(self):
-        """3:45: take profit, LLM invalidation, trailing stops."""
-        if self.r.halted: self.j.log("SKIP", "halted; no review"); return
+    def review(self, use_llm=True, quiet=False):
+        """3:45 in swing mode, every few minutes in day mode: stop-outs, take profit, trailing stops, and (use_llm) thesis invalidation."""
+        if self.r.halted:
+            if not quiet: self.j.log("SKIP", "halted; no review")
+            return
         self.r.check_caps()
         trades = self.j.open_trades()
-        if not trades: self.j.log("REVIEW", "nothing open"); self._mark_equity(); return
+        if not trades:
+            if not quiet: self.j.log("REVIEW", "nothing open")
+            self._mark_equity(); return
         prices = self.b.prices_for([t["symbol"] for t in trades])
         held = {p["symbol"] for p in self.b.positions()}
         for t in trades:
@@ -108,11 +114,12 @@ class Executor:
             if not px: continue
             rule, new_stop = self.r.exit_rules(t, px)
             if rule == "take_profit": self._exit(t, "take_profit", px); continue
-            th = self._thesis(t["thesis_id"])
-            try: news = [n["headline"] for n in self.b.news([sym], limit=15)]
-            except Exception: news = []
-            bad, why = self.a.invalidated(t, th, px, news)
-            if bad: self.j.log("REVIEW", f"{sym} thesis invalidated: {why}"); self._exit(t, "invalidated", px); continue
+            if use_llm:
+                th = self._thesis(t["thesis_id"])
+                try: news = [n["headline"] for n in self.b.news([sym], limit=15)]
+                except Exception: news = []
+                bad, why = self.a.invalidated(t, th, px, news)
+                if bad: self.j.log("REVIEW", f"{sym} thesis invalidated: {why}"); self._exit(t, "invalidated", px); continue
             if rule == "trail":
                 try:
                     soid = self.b.replace_stop(t["stop_order_id"], new_stop) if t.get("stop_order_id") else self.b.stop_order(sym, t["qty"], new_stop)
@@ -120,9 +127,25 @@ class Executor:
                 except Exception as e: self.j.log("ERROR", f"{sym} trail failed: {str(e)[:120]}")
         self._mark_equity()
 
+    def flatten(self):
+        """Day mode, 15:55: sell everything still open. Also the answer to 'go flat' from the operator."""
+        trades = self.j.open_trades()
+        if not trades: self.j.log("FLATTEN", "nothing open"); self._mark_equity(); return []
+        held = {p["symbol"] for p in self.b.positions()}
+        prices = self.b.prices_for([t["symbol"] for t in trades])
+        out = []
+        for t in trades:
+            if t["symbol"] not in held:
+                self.j.close_trade(t["id"], t["stop"] or prices.get(t["symbol"]) or t["entry"], "stop"); self.j.log("EXIT", f"{t['symbol']} stopped out near {t['stop']:.2f}"); continue
+            self._exit(t, "close", prices.get(t["symbol"])); out.append(t["symbol"])
+        self._mark_equity()
+        return out
+
     def _exit(self, t, reason, px=None):
         try:
-            self.b.cancel_all_for(t["symbol"]) if hasattr(self.b, "cancel_all_for") else None
+            if t.get("stop_order_id"):
+                try: self.b.cancel_order(t["stop_order_id"])
+                except Exception as e: self.j.log("WARN", f"{t['symbol']} stop cancel failed: {str(e)[:100]}")
             o = self.b.market_sell(t["symbol"])
             fill = (o or {}).get("filled_avg_price") or px or self.b.price(t["symbol"])
             pl = self.j.close_trade(t["id"], fill, reason)

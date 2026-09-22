@@ -12,13 +12,20 @@ class Analyst:
     def __init__(self, cfg, llm, journal):
         self.cfg = cfg; self.llm = llm; self.j = journal
 
-    def theses(self, pack, refresh=False, existing=None):
+    def theses(self, pack, refresh=False, existing=None, intraday=False):
         if not self.llm.ready: return [], self.llm.problem
         risk = self.cfg.risk
-        sys = persona() + f"\n\nYou are running the {'9:00 refresh' if refresh else '6:00 research pass'}. Current rules: min price ${risk['min_price']}, min conviction to trade {risk['min_conviction']}, max positions {risk['max_positions']}. Write at most {self.cfg.llm.get('max_theses',8)} theses."
+        which = "intraday hunt" if intraday else ("9:00 refresh" if refresh else "6:00 research pass")
+        sys = persona(self.cfg.hold_mode) + f"\n\nYou are running the {which}. Current rules: min price ${risk['min_price']}, min conviction to trade {risk['min_conviction']}, max positions {risk['max_positions']}, stop {risk['stop_loss_pct']}%, target {risk['take_profit_pct']}%. Write at most {self.cfg.llm.get('max_theses',8)} theses."
+        if self.cfg.hold_mode == "day":
+            sys += (f"\n\nDAY MODE. Every position is sold at {self.cfg.schedule.get('flatten', '15:55')} ET today, no exceptions. A thesis only counts if the catalyst can move the stock within hours, today. "
+                    "Yesterday's news that already gapped at the open is priced in. Prefer fresh catalysts with volume behind them: an earnings beat still running, guidance, an FDA decision, a contract, an upgrade this morning, a sector move with a clear driver. "
+                    "Avoid names that already ran more than 15% today unless the catalyst is still unfolding, thin names, and anything without a source in the pack. Fewer, cleaner theses beat a long list.")
         user = pack
         if refresh and existing:
             user += "\n\nYOUR 6:00 THESES (revise conviction, drop what is priced in, add only if something new and real happened):\n" + json.dumps(existing)[:6000]
+        if intraday and existing:
+            user += "\n\nALREADY COVERED TODAY (do not repeat these names; write only what is new since the last pass, or nothing):\n" + ", ".join(sorted({t["symbol"] for t in existing}))
         out = self.llm.json(sys, user, SCHEMA, max_tokens=5000)
         if not out: return [], "LLM failed"
         th = []
@@ -36,7 +43,7 @@ class Analyst:
     def invalidated(self, trade, thesis, price, news_lines):
         """Afternoon check: is the reason for the trade gone? Returns (bool, why)."""
         if not self.llm.ready or not thesis: return False, (self.llm.problem if not self.llm.ready else "no thesis")
-        sys = persona() + "\n\nYou are reviewing an open position at 3:45 PM ET. Decide only whether the original thesis is invalidated. Be strict: normal noise is not invalidation."
+        sys = persona(self.cfg.hold_mode) + "\n\nYou are reviewing an open position at 3:45 PM ET. Decide only whether the original thesis is invalidated. Be strict: normal noise is not invalidation."
         user = f"POSITION: {trade['symbol']} entry {trade['entry']:.2f} now {price:.2f} ({(price/trade['entry']-1)*100:+.1f}%)\nTHESIS: {thesis.get('catalyst')}\nREASON: {thesis.get('reason')}\nINVALIDATION CONDITION: {thesis.get('invalidation')}\nTODAY'S NEWS ON IT:\n" + "\n".join(news_lines[:30])
         out = self.llm.json(sys, user, '\nSchema: {"invalidated":false,"why":"one line"}', max_tokens=300)
         if not out: return False, "LLM failed"
@@ -45,6 +52,6 @@ class Analyst:
     def think(self, question, context):
         """Slow thinking for the voice agent: a real answer from the strong model."""
         if not self.llm.ready: return "OpenAI rejected my key. Ask the operator to replace it in Railway." if self.llm.status == "rejected" else "I do not have my brain connected yet. Ask the operator to add the OpenAI key."
-        sys = persona() + "\n\nThe operator asked you to think hard about something. Answer in your own voice, in a few short paragraphs at most, with numbers from the context when you have them. Never predict a price."
+        sys = persona(self.cfg.hold_mode) + "\n\nThe operator asked you to think hard about something. Answer in your own voice, in a few short paragraphs at most, with numbers from the context when you have them. Never predict a price."
         m = self.llm.chat([{"role": "system", "content": sys}, {"role": "user", "content": f"CONTEXT:\n{context}\n\nQUESTION: {question}"}], max_tokens=800)
         return (m.content if m else "I could not think that through right now.").strip()

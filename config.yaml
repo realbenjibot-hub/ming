@@ -1,13 +1,25 @@
 # Ming: every rule in one place. The dashboard can change the keys listed under editable; changes land in DATA_DIR/overrides.json.
 mode: paper                # paper | live  (live also needs LIVE_CONFIRM=YES in the environment)
 timezone: America/New_York
+hold_mode: day             # day | swing. day: flat by the close, intraday hunts; swing: hold until stop, target, or invalidation. The dashboard can flip it.
 
-schedule:                  # weekdays, Eastern
+schedule:                  # weekdays, Eastern. review runs in swing mode only; flatten and the intraday jobs run in day mode only.
   research: "06:00"
   refresh:  "09:00"
   execute:  "09:35"
   review:   "15:45"
+  flatten:  "15:55"
   report:   "16:05"
+
+day:                       # day mode only
+  scan_every_min: 5        # intraday position check: stop-outs, targets, trailing stops. No LLM.
+  hunt_every_min: 30       # intraday research: fresh news and movers -> new theses -> rules engine -> entries
+  first_hunt: "10:00"      # first intraday hunt, ET (9:35 execute already took the morning theses)
+  last_entry: "15:00"      # no new entries after this, ET
+  stop_loss_pct: 1.5       # day-mode exit rules; they override the preset's swing numbers while hold_mode is day
+  take_profit_pct: 3
+  trail_trigger_pct: 1.5
+  trail_pct: 1
 
 risk:
   capital_cap: 10000       # dollars Ming is allowed to deploy, regardless of account size

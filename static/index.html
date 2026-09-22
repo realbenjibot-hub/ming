@@ -131,7 +131,7 @@ button.go{color:#0b0b0b;background:var(--warm);border-color:var(--warm);font-wei
 .pos .pl small{color:var(--dim2);margin-left:.6em;font-size:.85em}
 .cat{font-size:.82em;color:var(--dim)}
 /* controls and aggression */
-#controls{left:var(--gx);bottom:4%;width:var(--gw);display:flex;gap:1.4em;flex-wrap:wrap}
+#controls{left:var(--gx);bottom:4%;width:var(--gw);display:flex;gap:1.1em;flex-wrap:nowrap;white-space:nowrap}
 #controls h4{display:none}
 #controls button{background:none;border:0;border-bottom:1px solid transparent;border-radius:0;padding:.2em 0;min-height:0;font:inherit;font-size:.92em;text-transform:none;letter-spacing:0;color:var(--soft);transition:color .2s,border-color .2s}
 #controls button:hover{color:var(--fg);border-bottom-color:var(--soft)}
@@ -241,7 +241,7 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
     </div>
 
     <div class="r" id="sched">
-      <span data-m="360"><b>6:00</b>research</span><span data-m="540"><b>9:00</b>refresh</span><span data-m="575"><b>9:35</b>execute</span><span data-m="945"><b>15:45</b>review</span><span data-m="965"><b>16:05</b>report</span>
+      <span data-m="360"><b>6:00</b>research</span><span data-m="540"><b>9:00</b>refresh</span><span data-m="575"><b>9:35</b>execute</span><span data-m="600"><b>10:00</b>hunt /30m</span><span data-m="900"><b>15:00</b>last entry</span><span data-m="955"><b>15:55</b>flatten</span><span data-m="965"><b>16:05</b>report</span>
     </div>
 
     <div class="r" id="race">
@@ -267,6 +267,8 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
       <button onclick="run('research')">research</button>
       <button onclick="run('execute')">execute</button>
       <button onclick="run('review')">review</button>
+      <button id="huntBtn" onclick="confirmRun('hunt','Hunt: read the last hour of news and movers, write new theses, and place orders for what qualifies. Continue?')">hunt</button>
+      <button id="flatBtn" onclick="confirmRun('flatten','Flatten: cancel every stop and sell every open position at market. Continue?')">flatten</button>
       <button onclick="run('report')">report</button>
       <button onclick="confirmRun('resume','Resume trading and reset the baseline to now?')">resume</button>
       <button class="kill" onclick="confirmRun('kill','Kill: cancel all orders, sell every position, halt until you resume. Continue?')">kill</button>
@@ -572,7 +574,9 @@ async function load(){
   try{
     const s=await api('/api/state');state=s;
     setMood(s);
-    $('#modeText').textContent=s.mode; $('#modeBadge').className='badge'+(s.mode==='live'?' live':'');
+    $('#modeText').textContent=s.mode+(s.hold_mode?' · '+s.hold_mode:''); $('#modeBadge').className='badge'+(s.mode==='live'?' live':'');
+    if(s.schedule){const key=JSON.stringify(s.schedule);if(key!==schedKey){schedKey=key;$('#sched').innerHTML=s.schedule.map(r=>`<span data-m="${r.m}"><b>${r.time}</b>${r.label}</span>`).join('');schedTick()}}
+    const isDay=s.hold_mode==='day';$('#huntBtn').style.display=isDay?'':'none';$('#flatBtn').style.display=isDay?'':'none';
     $('#brain').textContent=s.brain==='rejected'?'brain rejected: OPENAI_API_KEY is invalid, replace it in Railway':'brain not connected: add OPENAI_API_KEY in Railway'; $('#brain').style.display=(s.brain==='connected')?'none':'block';
     const b=s.bot_return_pct,p=s.spy_return_pct,span=Math.max(2,Math.abs(b),Math.abs(p));
     bar('#botBar',b,span); bar('#spyBar',p,span);
@@ -612,6 +616,8 @@ async function run(cmd){const b=[...document.querySelectorAll('#controls button'
     else if(cmd==='research'||cmd==='morning'){const th=x.theses||[];addMsg('a',th.length?('Research done. '+th.length+' theses: '+th.map(t=>t.symbol+' '+t.conviction).join(', ')+'. Bar to trade is conviction '+(state.config?state.config.min_conviction:7)+'.'):('Research done. No theses today'+(x.note?': '+x.note:'.')))}
     else if(cmd==='execute'){const tr=x.trades||[];addMsg('a',tr.length?('Executed: '+tr.map(t=>'BUY '+t.qty+' '+t.symbol+' @ '+fmt(t.fill)+' stop '+fmt(t.stop)).join('; ')):'Execute ran. Nothing qualified; see activity for the reasons.')}
     else if(cmd==='review')addMsg('a','Review done. Open positions checked; any exits or stop changes are in activity.');
+    else if(cmd==='hunt'){const th=x.theses||[],tr=x.trades||[];addMsg('a',(th.length?('Hunt: '+th.length+' new: '+th.map(t=>t.symbol+' '+t.conviction).join(', ')+'. '):'Hunt: nothing new'+(x.note?' ('+x.note+')':'')+'. ')+(tr.length?('Bought '+tr.map(t=>t.qty+' '+t.symbol+' @ '+fmt(t.fill)).join('; ')+'.'):''))}
+    else if(cmd==='flatten'){const c=x.closed||[];addMsg('a',c.length?('Flat. Sold '+c.join(', ')+'.'):'Flat. Nothing was open.')}
     else if(cmd==='kill')addMsg('a','Killed. Everything flat, halted until you resume.');
     else if(cmd==='resume')addMsg('a','Resumed. Baseline reset to now.');
   }catch(e){toast('Failed: '+e.message);addMsg('a',cmd+' failed: '+e.message)}finally{if(b)b.classList.remove('busy');load()}}
@@ -625,6 +631,7 @@ function addMsg(role,text,think){const m=$('#msgs');const d=document.createEleme
 async function send(){const i=$('#chatIn');const t=i.value.trim();if(!t)return;i.value='';addMsg('user',t);history.push({role:'user',content:t});const w=addMsg('a','...',true);
   try{const r=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history})});w.remove();addMsg('a',r.reply);history.push({role:'assistant',content:r.reply});load()}catch(e){w.remove();addMsg('a','Error: '+e.message)}}
 
+let schedKey='';
 function schedTick(){const et=new Date(new Date().toLocaleString('en-US',{timeZone:'America/New_York'}));const m=et.getHours()*60+et.getMinutes(),wk=et.getDay()>0&&et.getDay()<6;let marked=false;
   for(const sp of document.querySelectorAll('#sched span')){const mm=+sp.dataset.m;sp.className='';if(!wk)continue;if(mm<m)sp.className='done';else if(!marked){sp.className='next';marked=true}}}
 schedTick();setInterval(schedTick,30000);
