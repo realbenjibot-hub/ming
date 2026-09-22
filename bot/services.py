@@ -86,7 +86,7 @@ class Services:
         except Exception: clock = {"is_open": False}
         pos = self.exe._positions_with_sector()
         now = dt.datetime.now(); wd = now.weekday() < 5
-        s.update({"mode": "live" if self.cfg.live else "paper", "hold_mode": self.cfg.hold_mode, "books": self.report.books(), "schedule": self.schedule_view(), "halted": self.risk.halted, "halt_reason": self.j.get("halt_reason", ""),
+        s.update({"mode": "live" if self.cfg.live else "paper", "hold_mode": self.cfg.hold_mode, "books": self.report.books(), "schedule": self.schedule_view(), "thinking": self.j.get("thinking"), "halted": self.risk.halted, "halt_reason": self.j.get("halt_reason", ""),
                   "market_open": bool(clock.get("is_open")), "workday": wd and 5 <= now.hour < 18, "aggression": self.cfg.aggression,
                   "positions": pos, "config": self.cfg.risk, "busy": self.busy, "brain": self.llm.status, "broker": self.b.name})
         return s
