@@ -113,7 +113,7 @@ for cmd in ("research", "refresh", "execute", "report"):
 sched.add_job(_job("review"), _cron(SC["review"]), id="review", misfire_grace_time=600)   # every mode: in day mode it manages anything left from swing
 sched.add_job(_job("flatten", only_mode="day"), _cron(SC.get("flatten", "15:55")), id="flatten", misfire_grace_time=240)
 sched.add_job(_job("sweep", only_mode="day"), _cron(SC.get("sweep", "09:31")), id="sweep", misfire_grace_time=600)   # day-book positions left from an earlier day go at the open
-sched.add_job(_job("scan", only_mode="day", window=("09:36", SC.get("flatten", "15:55"))), IntervalTrigger(minutes=int(DAY.get("scan_every_min", 5))), id="scan", misfire_grace_time=60)
+sched.add_job(_job("scan", only_mode="day", window=("09:36", "16:10")), IntervalTrigger(minutes=int(DAY.get("scan_every_min", 5))), id="scan", misfire_grace_time=60)   # runs past the close on purpose: the scan is the flatten's backstop
 sched.add_job(_job("hunt", only_mode="day", window=(DAY.get("first_hunt", "10:00"), DAY.get("last_entry", "15:00"))), IntervalTrigger(minutes=int(DAY.get("hunt_every_min", 30)), start_date=dt.datetime.now(ZoneInfo(svc.cfg.tz)) + dt.timedelta(minutes=2)), id="hunt", misfire_grace_time=120)
 @app.on_event("startup")
 def start():
