@@ -24,7 +24,7 @@ class Services:
     def run(self, cmd):
         fn = {"research": self.do_research, "refresh": self.do_refresh, "execute": self.do_execute, "review": self.do_review,
               "report": self.do_report, "kill": self.do_kill, "resume": self.do_resume, "morning": self.do_morning,
-              "scan": self.do_scan, "hunt": self.do_hunt, "flatten": self.do_flatten, "flatten_all": self.do_flatten_all}.get(cmd)
+              "scan": self.do_scan, "hunt": self.do_hunt, "flatten": self.do_flatten, "flatten_all": self.do_flatten_all, "sweep": self.do_sweep}.get(cmd)
         if not fn: raise ValueError(f"unknown command {cmd}")
         if not self._lock.acquire(blocking=False): raise RuntimeError(f"busy: {self.busy}")
         try:
@@ -73,6 +73,7 @@ class Services:
         return {"theses": th, "trades": trades, "note": note}
     def do_flatten(self): return {"closed": self.exe.flatten("day")}
     def do_flatten_all(self): return {"closed": self.exe.flatten(None)}
+    def do_sweep(self): return {"closed": self.exe.flatten("day", stale_only=True)}
     def do_report(self): return {"report": self.report.text()}
     def do_kill(self): self.risk.halt("operator kill switch"); return {"ok": True}
     def do_resume(self): self.risk.reset_baselines(); return {"ok": True}
@@ -99,6 +100,7 @@ class Services:
         sc = self.cfg.schedule; d = self.cfg.day
         def m(hhmm): h, mm = hhmm.split(":"); return int(h) * 60 + int(mm)
         rows = [(sc["research"], "research"), (sc["refresh"], "refresh"), (sc["execute"], "execute")]
+        if "day" in self.cfg.books and any((t["entry_ts"] or "")[:10] < dt.date.today().isoformat() for t in self.j.open_trades("day")): rows.append((sc.get("sweep", "09:31"), "sweep"))
         if "day" in self.cfg.books:
             rows += [(d.get("first_hunt", "10:00"), f"hunt /{d.get('hunt_every_min', 30)}m"), (d.get("last_entry", "15:00"), "last entry")]
         if self.cfg.hold_mode != "day" or self.j.open_trades("swing"): rows += [(sc["review"], "review")]
