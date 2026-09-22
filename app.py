@@ -93,10 +93,14 @@ def _job(cmd, only_mode=None, window=None):
         if window:
             now = dt.datetime.now(ZoneInfo(svc.cfg.tz)); hhmm = now.strftime("%H:%M")
             if now.weekday() > 4 or not (window[0] <= hhmm < window[1]): return
-        try: svc.run(cmd)
-        except RuntimeError as e:
-            if cmd not in ("scan",): svc.j.log("WARN", f"scheduled {cmd} skipped: {e}")
-        except Exception as e: svc.j.log("ERROR", f"scheduled {cmd} failed: {type(e).__name__}: {str(e)[:200]}")
+        import time
+        for attempt in range(12 if cmd != "scan" else 1):   # a scan holds the lock for seconds; anything else waits it out instead of losing its slot
+            try: svc.run(cmd); return
+            except RuntimeError as e:
+                if cmd == "scan": return
+                if attempt == 11: svc.j.log("WARN", f"scheduled {cmd} skipped after 60s: {e}"); return
+                time.sleep(5)
+            except Exception as e: svc.j.log("ERROR", f"scheduled {cmd} failed: {type(e).__name__}: {str(e)[:200]}"); return
     return f
 def _cron(hhmm):
     h, m = hhmm.split(":"); return CronTrigger(day_of_week="mon-fri", hour=int(h), minute=int(m))
@@ -106,7 +110,7 @@ for cmd in ("research", "refresh", "execute", "report"):
 sched.add_job(_job("review"), _cron(SC["review"]), id="review", misfire_grace_time=600)   # every mode: in day mode it manages anything left from swing
 sched.add_job(_job("flatten", only_mode="day"), _cron(SC.get("flatten", "15:55")), id="flatten", misfire_grace_time=240)
 sched.add_job(_job("scan", only_mode="day", window=("09:36", SC.get("flatten", "15:55"))), IntervalTrigger(minutes=int(DAY.get("scan_every_min", 5))), id="scan", misfire_grace_time=60)
-sched.add_job(_job("hunt", only_mode="day", window=(DAY.get("first_hunt", "10:00"), DAY.get("last_entry", "15:00"))), IntervalTrigger(minutes=int(DAY.get("hunt_every_min", 30))), id="hunt", misfire_grace_time=120)
+sched.add_job(_job("hunt", only_mode="day", window=(DAY.get("first_hunt", "10:00"), DAY.get("last_entry", "15:00"))), IntervalTrigger(minutes=int(DAY.get("hunt_every_min", 30)), start_date=dt.datetime.now(ZoneInfo(svc.cfg.tz)) + dt.timedelta(minutes=2)), id="hunt", misfire_grace_time=120)
 @app.on_event("startup")
 def start():
     if os.environ.get("MING_NO_SCHED") != "1":
