@@ -163,7 +163,10 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
 /* theses: name, conviction bar, verdict; catalyst on click */
 #right{right:var(--gx);top:10%;bottom:4%;width:var(--gw);display:flex;flex-direction:column;gap:2.2em;opacity:1}
 #right .r{position:static;min-height:0}
-#theses{flex:0 1 auto;max-height:46%;overflow:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to bottom,#000 92%,transparent);mask-image:linear-gradient(to bottom,#000 92%,transparent);padding-bottom:1em}
+#thinking{flex:0 0 auto}
+#thinking #thinkText{font-size:.92em;line-height:1.5;color:var(--soft)}
+#thinking #thinkWhen{font-weight:400;color:var(--dim2);margin-left:.6em}
+#theses{flex:0 1 auto;max-height:40%;overflow:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to bottom,#000 92%,transparent);mask-image:linear-gradient(to bottom,#000 92%,transparent);padding-bottom:1em}
 .th{padding:.5em 0;border-top:1px solid var(--rule);cursor:pointer}
 .th:first-child{border-top:0}
 .th .line{display:grid;grid-template-columns:4.2em 1fr 3.6em;align-items:center;gap:1em}
@@ -288,6 +291,7 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
     </div>
 
     <div class="r" id="right">
+    <div class="r" id="thinking"><h4>what he is thinking <span id="thinkWhen"></span></h4><div id="thinkText" class="cat">Nothing yet. He speaks after the first research pass.</div></div>
     <div class="r" id="theses"><h4>today's theses <span id="thN"></span></h4><div id="thList"></div></div>
 
     <div class="r" id="logwrap"><div id="log"></div></div>
@@ -595,6 +599,7 @@ async function load(){
     if(document.activeElement!==$('#dialRange')){$('#dialRange').value=s.aggression;previewDial(s.aggression)}
     const k=$('#knobs'); if(!k.children.length){for(const key of Object.keys(LABELS))k.insertAdjacentHTML('beforeend',`<div><label for="k_${key}">${LABELS[key]}</label><input class="mono" id="k_${key}" type="number" step="any" value="${s.config[key]}" onchange="setKnob('${key}',this.value)"></div>`)}
     else for(const key of Object.keys(LABELS)){const i=$('#k_'+key);if(document.activeElement!==i)i.value=s.config[key]}
+    if(s.thinking&&s.thinking.text){$('#thinkText').textContent=s.thinking.text;$('#thinkText').className='';$('#thinkWhen').textContent=et(s.thinking.ts)+(s.thinking.pass?' · '+s.thinking.pass:'')}
     const th=await api('/api/theses'); const tl=$('#thList'); tl.innerHTML=''; $('#thN').textContent=th.length||'';
     if(!th.length)tl.innerHTML='<div class="cat">Nothing yet. Research runs at 6:00 AM ET.</div>';
     for(const t of th)tl.insertAdjacentHTML('beforeend',`<div class="th ${t.acted?'in':''}" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${t.symbol}${t.book?'<small style="font-weight:400;opacity:.55;margin-left:.5em;font-size:.7em">'+t.book+'</small>':''}</span><div class="conv" title="conviction ${t.conviction}/10"><i style="width:${t.conviction*10}%"></i></div><span class="tag">${t.acted?'in':(t.reject_reason?'skip':'pending')}</span></div><div class="more"><span class="sector">${t.sector||''}${t.sector?' · ':''}conviction ${t.conviction}/10</span><br>${t.catalyst}${!t.acted&&t.reject_reason?`<br><span class="sector">${t.reject_reason}</span>`:''}</div></div>`);

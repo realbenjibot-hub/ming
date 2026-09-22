@@ -3,7 +3,8 @@ import json
 from .ideas import persona
 
 SCHEMA = """
-Schema: {"theses":[{"symbol":"NVDA","sector":"Semiconductors","catalyst":"one line, what happened","reason":"why it moves the stock in the next days","invalidation":"what would prove this wrong","conviction":7,"priced_in":false,"operator_directed":false,"horizon":"day","sources":["SEC 8-K","CNBC"]}],"sat_out_because":"optional one line if the list is empty"}
+Schema: {"theses":[{"symbol":"NVDA","sector":"Semiconductors","catalyst":"one line, what happened","reason":"why it moves the stock in the next days","invalidation":"what would prove this wrong","conviction":7,"priced_in":false,"operator_directed":false,"horizon":"day","sources":["SEC 8-K","CNBC"]}],"sat_out_because":"optional one line if the list is empty","thinking":"two short sentences in your own voice: what you are watching right now and what you would trade next, or why you are waiting"}
+thinking is required on every pass, even when the list is empty. Plain words, no tickers you did not source, no price predictions.
 horizon is "day" when the catalyst plays out within today's session and "swing" when it needs days. Set it on every thesis.
 Rules: long only; US stocks and ETFs above the price floor; conviction is 1 to 10; max theses as instructed; an empty list is allowed and often right.
 A thesis with priced_in true must have conviction 5 or lower. Every thesis must name at least one source from the pack. Do not invent tickers.
@@ -44,6 +45,8 @@ class Analyst:
                            "book": self._book(t, intraday)})
             except Exception: continue
         th.sort(key=lambda x: -x["conviction"])
+        thinking = str(out.get("thinking", "")).strip()[:400]
+        if thinking: self.j.set("thinking", {"text": thinking, "ts": self.j.now(), "pass": which})
         return th, out.get("sat_out_because", "")
 
     def _book(self, t, intraday):
