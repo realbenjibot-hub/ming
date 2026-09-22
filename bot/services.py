@@ -50,7 +50,13 @@ class Services:
         """3:45 with the LLM invalidation check. Both mode: the swing book. Day or swing mode: every open trade, so a position left from the other mode is still managed."""
         self.exe.review(book="swing" if self.cfg.hold_mode == "both" else None); return {"ok": True}
     def do_scan(self):
-        """Every few minutes while the market is open: the day book's stops, targets, trails. No LLM, quiet unless something happens."""
+        """Every few minutes while the market is open: the day book's stops, targets, trails. No LLM, quiet unless something happens.
+        Safety net: past the flatten time it flattens the day book itself, so a missed 15:55 job cannot leave him holding overnight."""
+        from zoneinfo import ZoneInfo
+        hhmm = dt.datetime.now(ZoneInfo(self.cfg.tz)).strftime("%H:%M")
+        if hhmm >= self.cfg.schedule.get("flatten", "15:55") and self.j.open_trades("day"):
+            self.j.log("FLATTEN", "scan past the flatten time with day-book positions open: flattening now")
+            return {"closed": self.exe.flatten("day")}
         self.exe.review(use_llm=False, quiet=True, book="day"); return {"ok": True}
     def do_hunt(self):
         """Every half hour: what moved in the last hour -> new day-book theses -> rules engine."""
