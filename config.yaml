@@ -1,7 +1,7 @@
 # Ming: every rule in one place. The dashboard can change the keys listed under editable; changes land in DATA_DIR/overrides.json.
 mode: paper                # paper | live  (live also needs LIVE_CONFIRM=YES in the environment)
 timezone: America/New_York
-hold_mode: both            # day | swing | both. day: flat by the close, intraday hunts. swing: hold until stop, target, or invalidation. both: two books side by side, Sol tags each thesis day or swing. The chat can flip it.
+hold_mode: day             # day | swing | both. day: flat by the close, intraday hunts. swing: hold until stop, target, or invalidation. both: two books side by side, Sol tags each thesis day or swing. The chat can flip it.
 
 schedule:                  # weekdays, Eastern. review runs in swing mode only; flatten and the intraday jobs run in day mode only.
   research: "06:00"
@@ -40,7 +40,7 @@ swing:                     # the swing book. Stop and target fall back to the ag
   target_max_pct: 20
 
 risk:
-  capital_cap: 10000       # dollars Ming is allowed to deploy, regardless of account size
+  capital_cap: 20000       # dollars Ming is allowed to deploy, regardless of account size
   loss_cap_daily_pct: 3    # down this much on the day -> flatten and halt
   loss_cap_total_pct: 10   # down this much from the baseline -> flatten and halt
   max_positions: 5

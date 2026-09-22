@@ -47,8 +47,8 @@ class Services:
     def do_refresh(self): return self.do_research(refresh=True)
     def do_execute(self): return {"trades": self.exe.execute()}
     def do_review(self):
-        """3:45: the swing book, with the LLM invalidation check. In day-only mode there is no swing book, so it checks the day book."""
-        self.exe.review(book="swing" if "swing" in self.cfg.books else "day"); return {"ok": True}
+        """3:45 with the LLM invalidation check. Both mode: the swing book. Day or swing mode: every open trade, so a position left from the other mode is still managed."""
+        self.exe.review(book="swing" if self.cfg.hold_mode == "both" else None); return {"ok": True}
     def do_scan(self):
         """Every few minutes while the market is open: the day book's stops, targets, trails. No LLM, quiet unless something happens."""
         self.exe.review(use_llm=False, quiet=True, book="day"); return {"ok": True}
@@ -100,7 +100,7 @@ class Services:
         rows = [(sc["research"], "research"), (sc["refresh"], "refresh"), (sc["execute"], "execute")]
         if "day" in self.cfg.books:
             rows += [(d.get("first_hunt", "10:00"), f"hunt /{d.get('hunt_every_min', 30)}m"), (d.get("last_entry", "15:00"), "last entry")]
-        if "swing" in self.cfg.books: rows += [(sc["review"], "review")]
+        if self.cfg.hold_mode != "day" or self.j.open_trades("swing"): rows += [(sc["review"], "review")]
         if "day" in self.cfg.books: rows += [(sc.get("flatten", "15:55"), "flatten")]
         rows += [(sc["report"], "report")]
         rows.sort(key=lambda r: m(r[0]))

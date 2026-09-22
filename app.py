@@ -103,7 +103,7 @@ def _cron(hhmm):
 SC, DAY = svc.cfg.schedule, svc.cfg.day
 for cmd in ("research", "refresh", "execute", "report"):
     sched.add_job(_job(cmd), _cron(SC[cmd]), id=cmd, misfire_grace_time=600)
-sched.add_job(_job("review", only_mode="swing"), _cron(SC["review"]), id="review", misfire_grace_time=600)
+sched.add_job(_job("review"), _cron(SC["review"]), id="review", misfire_grace_time=600)   # every mode: in day mode it manages anything left from swing
 sched.add_job(_job("flatten", only_mode="day"), _cron(SC.get("flatten", "15:55")), id="flatten", misfire_grace_time=240)
 sched.add_job(_job("scan", only_mode="day", window=("09:36", SC.get("flatten", "15:55"))), IntervalTrigger(minutes=int(DAY.get("scan_every_min", 5))), id="scan", misfire_grace_time=60)
 sched.add_job(_job("hunt", only_mode="day", window=(DAY.get("first_hunt", "10:00"), DAY.get("last_entry", "15:00"))), IntervalTrigger(minutes=int(DAY.get("hunt_every_min", 30))), id="hunt", misfire_grace_time=120)
@@ -112,7 +112,7 @@ def start():
     if os.environ.get("MING_NO_SCHED") != "1":
         sched.start()
         bk = svc.cfg.books
-        jobs = ", ".join(f"{k} {v}" for k, v in SC.items() if not (k == "review" and "swing" not in bk) and not (k == "flatten" and "day" not in bk))
+        jobs = ", ".join(f"{k} {v}" for k, v in SC.items() if not (k == "flatten" and "day" not in bk))
         extra = f", scan every {DAY.get('scan_every_min', 5)}m, hunt every {DAY.get('hunt_every_min', 30)}m {DAY.get('first_hunt', '10:00')}-{DAY.get('last_entry', '15:00')}" if "day" in bk else ""
         svc.j.log("INFO", f"scheduler on ({svc.cfg.hold_mode}: " + ", ".join(f"{k} ${v:,.0f}" for k, v in bk.items()) + f"): {jobs}{extra} ET weekdays")
 @app.on_event("shutdown")
