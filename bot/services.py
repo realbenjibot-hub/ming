@@ -68,7 +68,8 @@ class Services:
             self.j.add_theses(day, th, "hunt")
             self.j.log("RESEARCH", f"hunt: {len(th)} new: " + ", ".join(f"{t['symbol']} {t['conviction']}" for t in th))
         else: self.j.log("RESEARCH", f"hunt: nothing new ({note or 'sat out'})")
-        trades = self.exe.execute(books=["day"]) if th else []
+        pending = [t for t in self.j.theses_for(day) if not t["acted"] and not t["reject_reason"] and (t.get("book") or "day") == "day"]
+        trades = self.exe.execute(books=["day"]) if (th or pending) else []   # pending: a thesis written earlier that no execute has judged yet
         return {"theses": th, "trades": trades, "note": note}
     def do_flatten(self): return {"closed": self.exe.flatten("day")}
     def do_flatten_all(self): return {"closed": self.exe.flatten(None)}
