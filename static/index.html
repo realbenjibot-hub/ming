@@ -122,7 +122,13 @@ button.go{color:#0b0b0b;background:var(--warm);border-color:var(--warm);font-wei
 #equity .more{margin-top:0}
 #equity:hover .more,#equity.open .more{max-height:6em;opacity:1}
 /* positions: name and P&L, detail on click */
-#positions{left:var(--gx);top:50%;width:var(--gw);max-height:24%;overflow:auto;scrollbar-width:none}
+#positions{left:var(--gx);top:50%;width:var(--gw);max-height:20%;overflow:auto;scrollbar-width:none}
+#history{left:var(--gx);top:71%;width:var(--gw);max-height:15%;overflow:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to bottom,#000 80%,transparent);mask-image:linear-gradient(to bottom,#000 80%,transparent);padding-bottom:1em}
+.hd{display:flex;justify-content:space-between;align-items:baseline;padding:.22em 0;font-size:.9em;border-top:1px solid var(--rule)}
+.hd:first-child{border-top:0}
+.hd .d{color:var(--dim)}
+.hd .d small{color:var(--dim2);margin-left:.5em}
+.hd .v small{color:var(--dim2);margin-left:.6em;font-size:.85em}
 .pos{padding:.45em 0;border-top:1px solid var(--rule);cursor:pointer}
 .pos:first-child{border-top:0}
 .pos .line{display:flex;justify-content:space-between;align-items:baseline;gap:1em}
@@ -266,6 +272,7 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
     </div>
 
     <div class="r" id="positions"><h4>positions <span id="posN"></span></h4><div id="posList"></div></div>
+    <div class="r" id="history"><h4>days</h4><div id="histList"></div></div>
 
     <div class="r" id="controls">
       <h4>Controls</h4>
@@ -595,6 +602,10 @@ async function load(){
     const pl=$('#posList'); pl.innerHTML=''; $('#posN').textContent=`${s.positions.length}/${s.config.max_positions}`;
     if(!s.positions.length)pl.innerHTML='<div class="cat">Nothing on. He is watching.</div>';
     for(const q of s.positions){pl.insertAdjacentHTML('beforeend',`<div class="pos" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${q.symbol}</span><span class="pl mono ${cls(q.pl)}">${sign(q.pl_pct)}%<small>${sign(q.pl)}</small></span></div><div class="more"><span class="mono">${q.book||''}${q.book?' · ':''}${fmt(q.qty,0)} @ ${fmt(q.entry)} · stop ${q.stop?fmt(q.stop):'-'}${q.target_pct?' · target +'+q.target_pct+'%':''}</span><br>${q.thesis?q.thesis.catalyst:''}</div></div>`)}
+    try{const hs=await api('/api/history?n=20');const hl=$('#histList');hl.innerHTML='';
+      if(!hs.length)hl.innerHTML='<div class="cat">No days on the record yet.</div>';
+      for(const h of hs){const wk=new Date(h.day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short'});hl.insertAdjacentHTML('beforeend',`<div class="hd"><span class="d mono">${h.day.slice(5)}<small>${wk}${h.source==='live'?' · live':''}</small></span><span class="v mono ${h.pnl?cls(h.pnl):''}">${sign(h.pnl)}<small>${sign(h.pct)}%</small></span></div>`)}
+    }catch(e){}
     if(!PRESETS)PRESETS=await api('/api/aggression/presets');
     if(document.activeElement!==$('#dialRange')){$('#dialRange').value=s.aggression;previewDial(s.aggression)}
     const k=$('#knobs'); if(!k.children.length){for(const key of Object.keys(LABELS))k.insertAdjacentHTML('beforeend',`<div><label for="k_${key}">${LABELS[key]}</label><input class="mono" id="k_${key}" type="number" step="any" value="${s.config[key]}" onchange="setKnob('${key}',this.value)"></div>`)}

@@ -41,6 +41,24 @@ class Report:
                          "avg_win": round(sum(t["pl"] for t in wins) / len(wins), 2) if wins else None, "avg_loss": round(sum(t["pl"] for t in losses) / len(losses), 2) if losses else None}
         return out
 
+    def history(self, n=30):
+        """One row per trading day, newest first: the day's P&L in dollars and as a percent of the cap. Days with a 16:05 record use it;
+        earlier days without one fall back to realized P&L from trades closed that day. Today is live from the account."""
+        cap = self.cfg.get("capital_cap") or 1
+        rows = {}
+        for r in self.j._q("SELECT key, value FROM meta WHERE key LIKE 'day:%'"):
+            import json; d = json.loads(r["value"]); rows[r["key"][4:]] = {"day": r["key"][4:], "pnl": d["pnl"], "pct": d["pct"], "closed": d.get("closed", 0), "source": "report"}
+        for t in self.j.closed_trades(1000):
+            d = (t["exit_ts"] or "")[:10]
+            if not d or d in rows and rows[d]["source"] == "report": continue
+            r = rows.setdefault(d, {"day": d, "pnl": 0.0, "pct": 0.0, "closed": 0, "source": "trades"})
+            r["pnl"] = round(r["pnl"] + (t["pl"] or 0), 2); r["closed"] += 1; r["pct"] = round(r["pnl"] / cap * 100, 3)
+        today = dt.date.today().isoformat()
+        s = self.state()
+        rows[today] = {"day": today, "pnl": round(s["day_pnl"], 2), "pct": round(s["day_pnl"] / cap * 100, 3), "closed": sum(1 for t in self.j.closed_trades(200) if (t["exit_ts"] or "")[:10] == today), "source": "live"}
+        out = sorted(rows.values(), key=lambda r: r["day"], reverse=True)[:n]
+        return out
+
     def text(self):
         s = self.state(); day = dt.date.today().isoformat()
         th = self.j.theses_for(day); tr = [t for t in self.j.all_trades(50) if (t["entry_ts"] or "")[:10] == day or (t["exit_ts"] or "")[:10] == day]
@@ -59,6 +77,9 @@ class Report:
             body = head
         report = body + "\n\n" + facts
         self.j.set(f"report:{day}", report); self.j.log("REPORT", "daily report written")
+        self.j.set(f"day:{day}", {"pnl": round(s["day_pnl"], 2), "pct": round(s["day_pnl"] / cap * 100, 3) if (cap := s["capital_cap"]) else 0.0,
+                                  "equity": round(s["equity"], 2), "closed": len([t for t in tr if t["status"] == "closed"]),
+                                  "realized": round(sum((t["pl"] or 0) for t in tr if t["status"] == "closed" and (t["exit_ts"] or "")[:10] == day), 2)})
         self._telegram(report)
         return report
 

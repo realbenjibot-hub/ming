@@ -46,6 +46,8 @@ def reports():
     return [r["key"][7:] for r in rows]
 @app.get("/api/report/{day}", dependencies=[Depends(auth)])
 def report(day: str): return PlainTextResponse(svc.j.get(f"report:{day}", "no report"))
+@app.get("/api/history", dependencies=[Depends(auth)])
+def history(n: int = Query(30, le=200)): return svc.report.history(n)
 @app.get("/api/ideas", dependencies=[Depends(auth)])
 def ideas(): return PlainTextResponse(svc.ideas())
 @app.get("/api/aggression/presets", dependencies=[Depends(auth)])
