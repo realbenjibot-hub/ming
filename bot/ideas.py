@@ -4,14 +4,20 @@ from .config import ROOT, DATA_DIR
 
 MING = ROOT / "ming" / "ming.md"
 OPERATOR = ROOT / "ming" / "operator.md"
+DAYMODE = ROOT / "ming" / "daytrading.md"
 IDEAS = DATA_DIR / "ideas.md"
 
 def _read(p):
     try: return open(p).read()
     except FileNotFoundError: return ""
 
-def persona():
-    return _read(MING) + "\n\n" + _read(OPERATOR)
+def persona(hold_mode=None):
+    if hold_mode is None:
+        try:
+            from .config import Config; hold_mode = Config().hold_mode
+        except Exception: hold_mode = "swing"
+    extra = ("\n\n" + _read(DAYMODE)) if hold_mode == "day" else ""
+    return _read(MING) + "\n\n" + _read(OPERATOR) + extra
 
 def ideas():
     if not IDEAS.exists() and (ROOT / "ming" / "ideas.md").exists():   # first boot: seed from the repo

@@ -46,12 +46,12 @@ class Research:
         except Exception as e:
             self.j.log("WARN", f"firecrawl failed: {type(e).__name__}"); return []
 
-    def gather(self, refresh=False):
-        """refresh=True is the 9:00 pass: movers, latest news, filings since 6:00. Returns a text pack and a dict of parts."""
+    def gather(self, refresh=False, intraday=False):
+        """refresh=True is the 9:00 pass: movers, latest news, filings since 6:00. intraday=True is a day-mode hunt: the last hour only. Returns a text pack and a dict of parts."""
         parts = {}
         src = self.cfg.sources
-        hours = 4 if refresh else 30
-        tiers = ["tier2"] if refresh else ["tier1", "tier2"]
+        hours = 1.5 if intraday else (4 if refresh else 30)
+        tiers = ["tier2"] if (refresh or intraday) else ["tier1", "tier2"]
         for tier in tiers:
             lines = []
             for s in src.get(tier, []):
@@ -63,7 +63,7 @@ class Research:
             def _et(iso):
                 try: return dt.datetime.fromisoformat(iso).astimezone(ZoneInfo(self.cfg.tz)).strftime("%m-%d %H:%M ET")
                 except Exception: return iso[5:16]
-            parts["alpaca_news"] = [f"[alpaca {_et(n['ts'])}] {n['headline']} {' '.join(n['symbols'][:4])} — {n['summary'][:160]}" for n in self.b.news(limit=60)]
+            parts["alpaca_news"] = [f"[alpaca {_et(n['ts'])}] {n['headline']} {' '.join(n['symbols'][:4])} — {n['summary'][:160]}" for n in self.b.news(limit=40 if intraday else 60)]
         except Exception as e:
             self.j.log("WARN", f"alpaca news failed: {type(e).__name__}"); parts["alpaca_news"] = []
         try:
@@ -72,18 +72,20 @@ class Research:
         except Exception as e:
             self.j.log("WARN", f"movers failed: {type(e).__name__}"); parts["movers"] = []
         web = []
-        for q in src.get("firecrawl_queries", []):
-            web += self._firecrawl(q)
+        if not intraday:
+            for q in src.get("firecrawl_queries", []):
+                web += self._firecrawl(q)
         parts["web"] = web
         parts["ideas"] = ideas()
         from zoneinfo import ZoneInfo
         now = dt.datetime.now(ZoneInfo(self.cfg.tz)); et = now.strftime("%A %Y-%m-%d %H:%M %Z")
-        pass_name = "9:00 pre-open refresh" if refresh else ("6:00 full research" if now.hour < 8 else f"full research run at {now.strftime('%H:%M')} ET (market {'open' if 9 <= now.hour < 16 else 'closed'})")
+        if intraday: pass_name = f"intraday hunt at {now.strftime('%H:%M')} ET, market open, day mode: everything closes at {self.cfg.day.get('flatten_at', self.cfg.schedule.get('flatten', '15:55'))} ET"
+        else: pass_name = "9:00 pre-open refresh" if refresh else ("6:00 full research" if now.hour < 8 else f"full research run at {now.strftime('%H:%M')} ET (market {'open' if 9 <= now.hour < 16 else 'closed'})")
         pack = [f"NOW: {et}. PASS: {pass_name}. Everything in this pack timestamped before NOW has already happened; judge whether the move is already in the price.",
                 "\nOPERATOR DIRECTION (ideas.md):\n" + parts["ideas"]]
         for k, title in [("tier1", "TIER 1: SEC FILINGS AND PRESS WIRES (primary sources)"), ("tier2", "TIER 2: WIRE SERVICES AND MARKET NEWS"),
-                         ("alpaca_news", "ALPACA NEWS FEED"), ("movers", "MOVERS (above the price floor; prior session unless pre-market)"), ("web", "WEB CONFIRMATION (Firecrawl)")]:
+                         ("alpaca_news", "ALPACA NEWS FEED"), ("movers", "MOVERS (above the price floor; live session)" if intraday else "MOVERS (above the price floor; prior session unless pre-market)"), ("web", "WEB CONFIRMATION (Firecrawl)")]:
             if parts.get(k): pack.append(f"\n{title}:\n" + "\n".join(parts[k][:120]))
         text = "\n".join(pack)
-        self.j.log("RESEARCH", f"pack: {sum(len(v) for k,v in parts.items() if isinstance(v,list))} items, {len(text)//1000}k chars" + (" (refresh)" if refresh else ""))
+        self.j.log("RESEARCH", f"pack: {sum(len(v) for k,v in parts.items() if isinstance(v,list))} items, {len(text)//1000}k chars" + (" (refresh)" if refresh else (" (intraday)" if intraday else "")))
         return text[:60000], parts
