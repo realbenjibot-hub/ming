@@ -4,8 +4,8 @@
 ## What Ming is
 Quant Ming ("Ming"): a news-driven, long-only paper trading analyst with a face. Sol (OpenAI `gpt-5.6-sol`) writes theses; a rules engine sizes, places, and protects; the operator (Caden) runs everything from one 1920x1080 page and can talk to Ming by voice. Repo: github.com/realbenjibot-hub/ming. Live: ming-production-6fc2.up.railway.app (Railway, Hobby, volume at /data). Login: any username, password is DASHBOARD_PASSWORD in Railway.
 
-## Hold mode (added 09-22)
-`hold_mode` in config.yaml is `day` or `swing`; the chat and the dashboard can flip it (set_setting hold_mode, or POST /api/config). Day mode: 6:00 research, 9:00 refresh, 9:35 execute, a hunt every 30 minutes 10:00 to 15:00 (last hour of news and movers, new theses, entries), a scan every 5 minutes (stops, targets, trail, no LLM), flatten at 15:55, report 16:05. Day-mode exits: stop 1.5, target 3, trail from 1.5 by 1. Swing mode is the original timetable and the preset's exits. `ming/daytrading.md` is read into the persona in day mode. Caden chose day on 09-21 evening; swing stays available.
+## Books and hold mode (added 09-22)
+`hold_mode` in config.yaml is `day`, `swing`, or `both` (default both); the chat can flip it (set_setting hold_mode) and so can POST /api/config. In both mode capital_cap is split by `books.day_share_pct` (50) and Sol tags every 6:00 and 9:00 thesis with a horizon, day or swing; a name can sit in one book only. Day book: hunt every 30 minutes 10:00 to 15:00 (last 90 minutes of news and movers, new theses, entries; skips the 11:30 to 13:30 pause), scan every 5 minutes (stops, targets, trail, no LLM), flatten at 15:55. Swing book: 15:45 review with LLM invalidation, holds overnight. Exits are set per trade at entry from the stock's average daily range (ATR percent over 14 days) and stored on the trade: day stop 0.5x ATR, target 1x; swing stop 1.5x, target 4x; clamped in config; the book's fixed numbers when there is no data. The research pack now carries gap, relative volume, range, and ATR next to movers and news names. State, report, and the page show per-book return, edge, open, closed, hit rate. `ming/daytrading.md` is read into the persona whenever a day book runs. Caden chose both on 09-22 to compare the two over the trial. The NVO trade from 09-21 was migrated into the swing book.
 
 ## Rules that stand
 Long only. Paper first; live is double-locked (mode: live in config.yaml AND LIVE_CONFIRM=YES). Kill switch stays. The LLM never sizes or places an order. Operator direction shapes theses and can request a name; the rules engine still sizes it and sets the stop; kill, resume, execute, and operator trades need a confirmed yes.
@@ -19,7 +19,8 @@ One 1920x1080 frame, scaled and letterboxed, no scrolling. Readouts in the dark 
 - Volume attached 09-21 ~14:09 UTC. Journal has survived redeploys since.
 - First position: BUY 75 NVO @ 39.89, stop 36.70, conviction 6, 09-21 15:49 UTC. Taken because the dial was at 10 (Full send: bar conviction 5, 8 positions, 30 percent per name, 8 percent daily cap). Claude recommends 5 (Balanced) after this position closes; Caden's call.
 - Bugs fixed 09-21: manual runs were labeled as the 6:00 pass; feed timestamps were UTC not ET. Both made him treat real news as the future. 09-22 6:00 is the first run with the fix.
-- 09-22: day mode shipped and set as the default. The NVO position from 09-21 will be flattened at 15:55 ET on 09-22 unless Caden flips to swing first.
+- 09-22: both books shipped. NVO sits in the swing book and is not flattened.
+- Recommendation standing: dial 6 (Leaning in: conviction 7, 5 slots per book, 18 percent per name) and capital_cap 20000 so each book runs $10,000. Caden's call.
 - Open question from Caden: raise capital_cap to the real amount he intends to trade after the trial (he liked the idea). Not yet set.
 
 ## Working method

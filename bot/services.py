@@ -24,7 +24,7 @@ class Services:
     def run(self, cmd):
         fn = {"research": self.do_research, "refresh": self.do_refresh, "execute": self.do_execute, "review": self.do_review,
               "report": self.do_report, "kill": self.do_kill, "resume": self.do_resume, "morning": self.do_morning,
-              "scan": self.do_scan, "hunt": self.do_hunt, "flatten": self.do_flatten}.get(cmd)
+              "scan": self.do_scan, "hunt": self.do_hunt, "flatten": self.do_flatten, "flatten_all": self.do_flatten_all}.get(cmd)
         if not fn: raise ValueError(f"unknown command {cmd}")
         if not self._lock.acquire(blocking=False): raise RuntimeError(f"busy: {self.busy}")
         try:
@@ -46,13 +46,16 @@ class Services:
         return {"theses": th, "note": note}
     def do_refresh(self): return self.do_research(refresh=True)
     def do_execute(self): return {"trades": self.exe.execute()}
-    def do_review(self): self.exe.review(); return {"ok": True}
+    def do_review(self):
+        """3:45: the swing book, with the LLM invalidation check. In day-only mode there is no swing book, so it checks the day book."""
+        self.exe.review(book="swing" if "swing" in self.cfg.books else "day"); return {"ok": True}
     def do_scan(self):
-        """Day mode, every few minutes while the market is open: stops, targets, trails. No LLM, quiet unless something happens."""
-        self.exe.review(use_llm=False, quiet=True); return {"ok": True}
+        """Every few minutes while the market is open: the day book's stops, targets, trails. No LLM, quiet unless something happens."""
+        self.exe.review(use_llm=False, quiet=True, book="day"); return {"ok": True}
     def do_hunt(self):
-        """Day mode, every half hour: what moved in the last hour -> new theses -> rules engine."""
-        ok, why = self.risk.entry_window()
+        """Every half hour: what moved in the last hour -> new day-book theses -> rules engine."""
+        if "day" not in self.cfg.books: return {"theses": [], "trades": [], "note": "no day book"}
+        ok, why = self.risk.entry_window("day")
         if not ok: self.j.log("SKIP", f"hunt skipped: {why}"); return {"theses": [], "trades": [], "note": why}
         self.risk.ensure_baselines()
         day = dt.date.today().isoformat()
@@ -65,9 +68,10 @@ class Services:
             self.j.add_theses(day, th, "hunt")
             self.j.log("RESEARCH", f"hunt: {len(th)} new: " + ", ".join(f"{t['symbol']} {t['conviction']}" for t in th))
         else: self.j.log("RESEARCH", f"hunt: nothing new ({note or 'sat out'})")
-        trades = self.exe.execute() if th else []
+        trades = self.exe.execute(books=["day"]) if th else []
         return {"theses": th, "trades": trades, "note": note}
-    def do_flatten(self): return {"closed": self.exe.flatten()}
+    def do_flatten(self): return {"closed": self.exe.flatten("day")}
+    def do_flatten_all(self): return {"closed": self.exe.flatten(None)}
     def do_report(self): return {"report": self.report.text()}
     def do_kill(self): self.risk.halt("operator kill switch"); return {"ok": True}
     def do_resume(self): self.risk.reset_baselines(); return {"ok": True}
@@ -81,7 +85,7 @@ class Services:
         except Exception: clock = {"is_open": False}
         pos = self.exe._positions_with_sector()
         now = dt.datetime.now(); wd = now.weekday() < 5
-        s.update({"mode": "live" if self.cfg.live else "paper", "hold_mode": self.cfg.hold_mode, "schedule": self.schedule_view(), "halted": self.risk.halted, "halt_reason": self.j.get("halt_reason", ""),
+        s.update({"mode": "live" if self.cfg.live else "paper", "hold_mode": self.cfg.hold_mode, "books": self.report.books(), "schedule": self.schedule_view(), "halted": self.risk.halted, "halt_reason": self.j.get("halt_reason", ""),
                   "market_open": bool(clock.get("is_open")), "workday": wd and 5 <= now.hour < 18, "aggression": self.cfg.aggression,
                   "positions": pos, "config": self.cfg.risk, "busy": self.busy, "brain": self.llm.status, "broker": self.b.name})
         return s
@@ -94,10 +98,12 @@ class Services:
         sc = self.cfg.schedule; d = self.cfg.day
         def m(hhmm): h, mm = hhmm.split(":"); return int(h) * 60 + int(mm)
         rows = [(sc["research"], "research"), (sc["refresh"], "refresh"), (sc["execute"], "execute")]
-        if self.cfg.hold_mode == "day":
-            rows += [(d.get("first_hunt", "10:00"), f"hunt /{d.get('hunt_every_min', 30)}m"), (d.get("last_entry", "15:00"), "last entry"), (sc.get("flatten", "15:55"), "flatten")]
-        else: rows += [(sc["review"], "review")]
+        if "day" in self.cfg.books:
+            rows += [(d.get("first_hunt", "10:00"), f"hunt /{d.get('hunt_every_min', 30)}m"), (d.get("last_entry", "15:00"), "last entry")]
+        if "swing" in self.cfg.books: rows += [(sc["review"], "review")]
+        if "day" in self.cfg.books: rows += [(sc.get("flatten", "15:55"), "flatten")]
         rows += [(sc["report"], "report")]
+        rows.sort(key=lambda r: m(r[0]))
         return [{"m": m(t), "time": t.lstrip("0"), "label": l} for t, l in rows]
     def set_hold_mode(self, mode):
         self.cfg.set("hold_mode", mode); self.j.log("CONFIG", f"hold_mode = {mode}"); return mode
@@ -110,8 +116,9 @@ class Services:
     def context_for_agent(self):
         """Compact context for chat and voice: state, theses, positions, last log lines, ideas."""
         s = self.state(); th = self.theses()
-        lines = [f"MODE {s['mode']}, {s['hold_mode']} trading{' HALTED: ' + s['halt_reason'] if s['halted'] else ''}. Equity ${s['equity']:,.2f}, today {s['day_pnl']:+.2f}, since start {s['pnl']:+.2f}, edge vs SPY {s['edge_pts']:+.2f} pts, closed {s['closed_trades']}, hit rate {s['hit_rate'] or 0:.0f}%. Aggression {s['aggression']}. Brain {s['brain']}. Market {'open' if s['market_open'] else 'closed'}.",
-                 "POSITIONS: " + ("; ".join(f"{p['symbol']} {p['qty']:.0f} @ {p['entry']:.2f} now {p['price']:.2f} ({p['pl_pct']:+.1f}%) stop {p['stop'] or '-'}" for p in s["positions"]) or "none"),
+        lines = [f"MODE {s['mode']}, hold_mode {s['hold_mode']}{' HALTED: ' + s['halt_reason'] if s['halted'] else ''}. Equity ${s['equity']:,.2f}, today {s['day_pnl']:+.2f}, since start {s['pnl']:+.2f}, edge vs SPY {s['edge_pts']:+.2f} pts, closed {s['closed_trades']}, hit rate {s['hit_rate'] or 0:.0f}%. Aggression {s['aggression']}. Brain {s['brain']}. Market {'open' if s['market_open'] else 'closed'}.",
+                 "BOOKS: " + "; ".join(f"{k} cap ${v['cap']:,.0f} return {v['return_pct']:+.2f}% (edge {v['edge_pts']:+.2f} pts) open {v['open']} closed {v['closed']} hit {v['hit_rate'] if v['hit_rate'] is not None else '-'}" for k, v in s["books"].items()),
+                 "POSITIONS: " + ("; ".join(f"{p['symbol']} [{p.get('book','')}] {p['qty']:.0f} @ {p['entry']:.2f} now {p['price']:.2f} ({p['pl_pct']:+.1f}%) stop {p['stop'] or '-'} target +{p.get('target_pct') or '-'}%" for p in s["positions"]) or "none"),
                  "THESES TODAY: " + ("; ".join(f"{t['symbol']} conv {t['conviction']} {'IN' if t['acted'] else ('skip: ' + (t['reject_reason'] or 'pending'))}: {t['catalyst']}" for t in th) or "none"),
                  "IDEAS: " + self.ideas().replace("\n", " | "),
                  "RECENT LOG: " + " | ".join(f"{r['ts'][11:16]} {r['level']} {r['msg']}" for r in self.j.logs(12))]

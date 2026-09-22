@@ -89,7 +89,7 @@ sched = BackgroundScheduler(timezone=svc.cfg.tz)
 def _job(cmd, only_mode=None, window=None):
     """window=(start, end) in HH:MM ET limits an interval job to part of the day; only_mode limits it to one hold mode."""
     def f():
-        if only_mode and svc.cfg.hold_mode != only_mode: return
+        if only_mode and only_mode not in svc.cfg.books: return
         if window:
             now = dt.datetime.now(ZoneInfo(svc.cfg.tz)); hhmm = now.strftime("%H:%M")
             if now.weekday() > 4 or not (window[0] <= hhmm < window[1]): return
@@ -111,10 +111,10 @@ sched.add_job(_job("hunt", only_mode="day", window=(DAY.get("first_hunt", "10:00
 def start():
     if os.environ.get("MING_NO_SCHED") != "1":
         sched.start()
-        hm = svc.cfg.hold_mode
-        jobs = ", ".join(f"{k} {v}" for k, v in SC.items() if k not in ("review" if hm == "day" else "flatten",))
-        extra = f", scan every {DAY.get('scan_every_min', 5)}m, hunt every {DAY.get('hunt_every_min', 30)}m {DAY.get('first_hunt', '10:00')}-{DAY.get('last_entry', '15:00')}" if hm == "day" else ""
-        svc.j.log("INFO", f"scheduler on ({hm} mode): {jobs}{extra} ET weekdays")
+        bk = svc.cfg.books
+        jobs = ", ".join(f"{k} {v}" for k, v in SC.items() if not (k == "review" and "swing" not in bk) and not (k == "flatten" and "day" not in bk))
+        extra = f", scan every {DAY.get('scan_every_min', 5)}m, hunt every {DAY.get('hunt_every_min', 30)}m {DAY.get('first_hunt', '10:00')}-{DAY.get('last_entry', '15:00')}" if "day" in bk else ""
+        svc.j.log("INFO", f"scheduler on ({svc.cfg.hold_mode}: " + ", ".join(f"{k} ${v:,.0f}" for k, v in bk.items()) + f"): {jobs}{extra} ET weekdays")
 @app.on_event("shutdown")
 def stop():
     if sched.running: sched.shutdown(wait=False)

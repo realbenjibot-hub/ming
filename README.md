@@ -5,7 +5,7 @@ Quant Ming: a news-driven, long-only paper trading analyst with a face. Sol (Ope
 Rules that stand: long only, paper first, kill switch stays, the LLM never sizes or places an order.
 
 ## Layout
-- `app.py` FastAPI, HTTP Basic auth, scheduler. Swing mode: 6:00 research, 9:00 refresh, 9:35 execute, 15:45 review, 16:05 report. Day mode: same morning, then a hunt every 30 minutes 10:00 to 15:00, a scan every 5 minutes, flatten at 15:55, report 16:05. ET weekdays. `hold_mode` in `config.yaml` picks; the chat can flip it.
+- `app.py` FastAPI, HTTP Basic auth, scheduler. Swing mode: 6:00 research, 9:00 refresh, 9:35 execute, 15:45 review, 16:05 report. Day mode: same morning, then a hunt every 30 minutes 10:00 to 15:00, a scan every 5 minutes, flatten at 15:55, report 16:05. Both mode (the default): both books at once with the capital cap split, Sol tags each thesis day or swing. ET weekdays. `hold_mode` in `config.yaml` picks; the chat can flip it.
 - `main.py` CLI for the same commands
 - `config.yaml` every rule, the ten aggression presets, the source list, model names
 - `bot/` broker (Alpaca or fake), research, analyst, risk, executor, journal (SQLite on `DATA_DIR`), report, chat, voice, tools, ideas

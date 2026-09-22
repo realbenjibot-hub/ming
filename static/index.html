@@ -255,6 +255,8 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
       <div class="kv big"><span>today</span><span class="mono" id="dayPnl">--</span></div>
       <div class="more">
         <div class="kv"><span>since start</span><span class="mono" id="pnl">--</span></div>
+        <div class="kv" id="bkDay"><span>day book</span><span class="mono" id="bkDayV">--</span></div>
+        <div class="kv" id="bkSwing"><span>swing book</span><span class="mono" id="bkSwingV">--</span></div>
         <div class="kv"><span>closed trades</span><span class="mono" id="closed">--</span></div>
         <div class="kv"><span>hit rate</span><span class="mono" id="hit">--</span></div>
       </div>
@@ -268,7 +270,7 @@ details.knobs summary:before{content:"+ "}details.knobs[open] summary:before{con
       <button onclick="run('execute')">execute</button>
       <button onclick="run('review')">review</button>
       <button id="huntBtn" onclick="confirmRun('hunt','Hunt: read the last hour of news and movers, write new theses, and place orders for what qualifies. Continue?')">hunt</button>
-      <button id="flatBtn" onclick="confirmRun('flatten','Flatten: cancel every stop and sell every open position at market. Continue?')">flatten</button>
+      <button id="flatBtn" onclick="confirmRun('flatten','Flatten: cancel every stop and sell every open day-book position at market. Continue?')">flatten</button>
       <button onclick="run('report')">report</button>
       <button onclick="confirmRun('resume','Resume trading and reset the baseline to now?')">resume</button>
       <button class="kill" onclick="confirmRun('kill','Kill: cancel all orders, sell every position, halt until you resume. Continue?')">kill</button>
@@ -576,7 +578,8 @@ async function load(){
     setMood(s);
     $('#modeText').textContent=s.mode+(s.hold_mode?' · '+s.hold_mode:''); $('#modeBadge').className='badge'+(s.mode==='live'?' live':'');
     if(s.schedule){const key=JSON.stringify(s.schedule);if(key!==schedKey){schedKey=key;$('#sched').innerHTML=s.schedule.map(r=>`<span data-m="${r.m}"><b>${r.time}</b>${r.label}</span>`).join('');schedTick()}}
-    const isDay=s.hold_mode==='day';$('#huntBtn').style.display=isDay?'':'none';$('#flatBtn').style.display=isDay?'':'none';
+    const isDay=!!(s.books&&s.books.day);$('#huntBtn').style.display=isDay?'':'none';$('#flatBtn').style.display=isDay?'':'none';
+    for(const k of ['day','swing']){const b=s.books&&s.books[k];const row=$('#bk'+(k==='day'?'Day':'Swing'));row.style.display=b?'':'none';if(b)$('#bk'+(k==='day'?'Day':'Swing')+'V').textContent=`${sign(b.return_pct)}% · ${b.open} on · ${b.closed} closed${b.hit_rate!=null?' · '+b.hit_rate+'%':''}`}
     $('#brain').textContent=s.brain==='rejected'?'brain rejected: OPENAI_API_KEY is invalid, replace it in Railway':'brain not connected: add OPENAI_API_KEY in Railway'; $('#brain').style.display=(s.brain==='connected')?'none':'block';
     const b=s.bot_return_pct,p=s.spy_return_pct,span=Math.max(2,Math.abs(b),Math.abs(p));
     bar('#botBar',b,span); bar('#spyBar',p,span);
@@ -587,14 +590,14 @@ async function load(){
     $('#closed').textContent=s.closed_trades; $('#hit').textContent=s.hit_rate==null?'--':fmt(s.hit_rate,0)+'%';
     const pl=$('#posList'); pl.innerHTML=''; $('#posN').textContent=`${s.positions.length}/${s.config.max_positions}`;
     if(!s.positions.length)pl.innerHTML='<div class="cat">Nothing on. He is watching.</div>';
-    for(const q of s.positions){pl.insertAdjacentHTML('beforeend',`<div class="pos" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${q.symbol}</span><span class="pl mono ${cls(q.pl)}">${sign(q.pl_pct)}%<small>${sign(q.pl)}</small></span></div><div class="more"><span class="mono">${fmt(q.qty,0)} @ ${fmt(q.entry)} · stop ${q.stop?fmt(q.stop):'-'}</span><br>${q.thesis?q.thesis.catalyst:''}</div></div>`)}
+    for(const q of s.positions){pl.insertAdjacentHTML('beforeend',`<div class="pos" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${q.symbol}</span><span class="pl mono ${cls(q.pl)}">${sign(q.pl_pct)}%<small>${sign(q.pl)}</small></span></div><div class="more"><span class="mono">${q.book||''}${q.book?' · ':''}${fmt(q.qty,0)} @ ${fmt(q.entry)} · stop ${q.stop?fmt(q.stop):'-'}${q.target_pct?' · target +'+q.target_pct+'%':''}</span><br>${q.thesis?q.thesis.catalyst:''}</div></div>`)}
     if(!PRESETS)PRESETS=await api('/api/aggression/presets');
     if(document.activeElement!==$('#dialRange')){$('#dialRange').value=s.aggression;previewDial(s.aggression)}
     const k=$('#knobs'); if(!k.children.length){for(const key of Object.keys(LABELS))k.insertAdjacentHTML('beforeend',`<div><label for="k_${key}">${LABELS[key]}</label><input class="mono" id="k_${key}" type="number" step="any" value="${s.config[key]}" onchange="setKnob('${key}',this.value)"></div>`)}
     else for(const key of Object.keys(LABELS)){const i=$('#k_'+key);if(document.activeElement!==i)i.value=s.config[key]}
     const th=await api('/api/theses'); const tl=$('#thList'); tl.innerHTML=''; $('#thN').textContent=th.length||'';
     if(!th.length)tl.innerHTML='<div class="cat">Nothing yet. Research runs at 6:00 AM ET.</div>';
-    for(const t of th)tl.insertAdjacentHTML('beforeend',`<div class="th ${t.acted?'in':''}" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${t.symbol}</span><div class="conv" title="conviction ${t.conviction}/10"><i style="width:${t.conviction*10}%"></i></div><span class="tag">${t.acted?'in':(t.reject_reason?'skip':'pending')}</span></div><div class="more"><span class="sector">${t.sector||''}${t.sector?' · ':''}conviction ${t.conviction}/10</span><br>${t.catalyst}${!t.acted&&t.reject_reason?`<br><span class="sector">${t.reject_reason}</span>`:''}</div></div>`);
+    for(const t of th)tl.insertAdjacentHTML('beforeend',`<div class="th ${t.acted?'in':''}" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${t.symbol}${t.book?'<small style="font-weight:400;opacity:.55;margin-left:.5em;font-size:.7em">'+t.book+'</small>':''}</span><div class="conv" title="conviction ${t.conviction}/10"><i style="width:${t.conviction*10}%"></i></div><span class="tag">${t.acted?'in':(t.reject_reason?'skip':'pending')}</span></div><div class="more"><span class="sector">${t.sector||''}${t.sector?' · ':''}conviction ${t.conviction}/10</span><br>${t.catalyst}${!t.acted&&t.reject_reason?`<br><span class="sector">${t.reject_reason}</span>`:''}</div></div>`);
     const lg=await api('/api/log?n=14'); const le=$('#log'); le.innerHTML='<h4>Activity</h4>';
     for(const r of lg)le.insertAdjacentHTML('beforeend',`<div><span class="mono" style="color:var(--dim)">${r.ts.slice(11,16)}</span> <span class="lv ${r.level}">${r.level}</span>${r.msg}</div>`);
   }catch(e){toast('Load failed: '+e.message)}
@@ -614,7 +617,7 @@ async function run(cmd){const b=[...document.querySelectorAll('#controls button'
     const x=r.result||{};
     if(cmd==='report'&&x.report)addMsg('a',x.report.split('\n\nTHESES TODAY')[0]);
     else if(cmd==='research'||cmd==='morning'){const th=x.theses||[];addMsg('a',th.length?('Research done. '+th.length+' theses: '+th.map(t=>t.symbol+' '+t.conviction).join(', ')+'. Bar to trade is conviction '+(state.config?state.config.min_conviction:7)+'.'):('Research done. No theses today'+(x.note?': '+x.note:'.')))}
-    else if(cmd==='execute'){const tr=x.trades||[];addMsg('a',tr.length?('Executed: '+tr.map(t=>'BUY '+t.qty+' '+t.symbol+' @ '+fmt(t.fill)+' stop '+fmt(t.stop)).join('; ')):'Execute ran. Nothing qualified; see activity for the reasons.')}
+    else if(cmd==='execute'){const tr=x.trades||[];addMsg('a',tr.length?('Executed: '+tr.map(t=>'BUY '+t.qty+' '+t.symbol+(t.book?' ['+t.book+']':'')+' @ '+fmt(t.fill)+' stop '+fmt(t.stop)+(t.target_pct?' target +'+t.target_pct+'%':'')).join('; ')):'Execute ran. Nothing qualified; see activity for the reasons.')}
     else if(cmd==='review')addMsg('a','Review done. Open positions checked; any exits or stop changes are in activity.');
     else if(cmd==='hunt'){const th=x.theses||[],tr=x.trades||[];addMsg('a',(th.length?('Hunt: '+th.length+' new: '+th.map(t=>t.symbol+' '+t.conviction).join(', ')+'. '):'Hunt: nothing new'+(x.note?' ('+x.note+')':'')+'. ')+(tr.length?('Bought '+tr.map(t=>t.qty+' '+t.symbol+' @ '+fmt(t.fill)).join('; ')+'.'):''))}
     else if(cmd==='flatten'){const c=x.closed||[];addMsg('a',c.length?('Flat. Sold '+c.join(', ')+'.'):'Flat. Nothing was open.')}

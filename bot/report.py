@@ -20,16 +20,39 @@ class Report:
                 "edge_pts": bot_ret - spy_ret, "closed_trades": len(closed), "hit_rate": (len(wins) / len(closed) * 100) if closed else None,
                 "realized": sum(t["pl"] or 0 for t in closed), "capital_cap": cap}
 
+    def books(self):
+        """Per book: realized plus unrealized against that book's cap, edge vs SPY over the same baseline, open, closed, hit rate."""
+        out = {}
+        spy0 = self.j.get("baseline_spy"); spy = None
+        try: spy = self.b.price("SPY")
+        except Exception: pass
+        spy_ret = ((spy / spy0 - 1) * 100) if (spy and spy0) else 0.0
+        open_all = self.j.open_trades(); prices = {}
+        try: prices = self.b.prices_for([t["symbol"] for t in open_all]) if open_all else {}
+        except Exception: pass
+        for book, cap in self.cfg.books.items():
+            closed = self.j.closed_trades(500, book); opens = [t for t in open_all if (t.get("book") or "swing") == book]
+            realized = sum(t["pl"] or 0 for t in closed)
+            unreal = sum(((prices.get(t["symbol"]) or t["entry"]) - t["entry"]) * t["qty"] for t in opens)
+            wins = [t for t in closed if (t["pl"] or 0) > 0]; losses = [t for t in closed if (t["pl"] or 0) <= 0]
+            ret = (realized + unreal) / cap * 100 if cap else 0.0
+            out[book] = {"cap": cap, "realized": round(realized, 2), "unrealized": round(unreal, 2), "return_pct": round(ret, 2), "edge_pts": round(ret - spy_ret, 2),
+                         "open": len(opens), "closed": len(closed), "hit_rate": round(len(wins) / len(closed) * 100) if closed else None,
+                         "avg_win": round(sum(t["pl"] for t in wins) / len(wins), 2) if wins else None, "avg_loss": round(sum(t["pl"] for t in losses) / len(losses), 2) if losses else None}
+        return out
+
     def text(self):
         s = self.state(); day = dt.date.today().isoformat()
         th = self.j.theses_for(day); tr = [t for t in self.j.all_trades(50) if (t["entry_ts"] or "")[:10] == day or (t["exit_ts"] or "")[:10] == day]
         hit = "n/a" if s["hit_rate"] is None else f"{s['hit_rate']:.0f}%"
         head = (f"Ming, {day}. Equity ${s['equity']:,.2f}, today {s['day_pnl']:+.2f}, since start {s['pnl']:+.2f} ({s['bot_return_pct']:+.2f}% on the cap vs SPY {s['spy_return_pct']:+.2f}%, edge {s['edge_pts']:+.2f} pts). "
                 f"Closed trades {s['closed_trades']}, hit rate {hit}.")
-        facts = "THESES TODAY:\n" + "\n".join(f"- {t['symbol']} conv {t['conviction']} {'IN' if t['acted'] else ('skip: '+(t['reject_reason'] or 'pending'))}: {t['catalyst']}" for t in th) or "none"
-        facts += "\nTRADES TODAY:\n" + ("\n".join(f"- {t['side']} {t['qty']:.0f} {t['symbol']} @ {t['entry']:.2f}" + (f" -> {t['exit']:.2f} ({t['exit_reason']}) P&L {t['pl']:+.2f}" if t['status']=='closed' else f" stop {t['stop']:.2f}") for t in tr) or "none")
+        bk = self.books()
+        facts = "BOOKS:\n" + "\n".join(f"- {k}: cap ${v['cap']:,.0f}, return {v['return_pct']:+.2f}% (edge vs SPY {v['edge_pts']:+.2f} pts), realized {v['realized']:+.2f}, open {v['open']}, closed {v['closed']}, hit rate {v['hit_rate'] if v['hit_rate'] is not None else 'n/a'}, avg win {v['avg_win'] if v['avg_win'] is not None else '-'}, avg loss {v['avg_loss'] if v['avg_loss'] is not None else '-'}" for k, v in bk.items())
+        facts += "\nTHESES TODAY:\n" + ("\n".join(f"- {t['symbol']} [{t.get('book') or '-'}] conv {t['conviction']} {'IN' if t['acted'] else ('skip: '+(t['reject_reason'] or 'pending'))}: {t['catalyst']}" for t in th) or "none")
+        facts += "\nTRADES TODAY:\n" + ("\n".join(f"- {t['side']} {t['qty']:.0f} {t['symbol']} [{t.get('book') or '-'}] @ {t['entry']:.2f}" + (f" -> {t['exit']:.2f} ({t['exit_reason']}) P&L {t['pl']:+.2f}" if t['status']=='closed' else f" stop {t['stop']:.2f}") for t in tr) or "none")
         if self.llm.ready:
-            m = self.llm.chat([{"role": "system", "content": persona(self.cfg.hold_mode) + "\n\nWrite the 4:05 PM daily report in your own voice. Six to ten short sentences. Lead with the number, then what you did and why, then what you would do differently. No spin."},
+            m = self.llm.chat([{"role": "system", "content": persona(self.cfg.hold_mode) + "\n\nWrite the 4:05 PM daily report in your own voice. Six to ten short sentences. Lead with the number, then what you did and why, then what you would do differently. When two books are running, say one line on how each did and whether the day or the swing side earned it. No spin."},
                                {"role": "user", "content": head + "\n\n" + facts}], max_tokens=500)
             body = m.content.strip() if m else head
         else:

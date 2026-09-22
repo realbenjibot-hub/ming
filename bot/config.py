@@ -32,9 +32,26 @@ class Config:
     def hold_mode(self):
         return str(self.overrides.get("hold_mode") or self.raw.get("hold_mode", "swing"))
     @property
+    def books(self):
+        """Active books and their dollar caps."""
+        cap = self.get("capital_cap"); share = float(self.raw.get("books", {}).get("day_share_pct", 50)) / 100
+        if self.hold_mode == "day": return {"day": cap}
+        if self.hold_mode == "swing": return {"swing": cap}
+        return {"day": round(cap * share, 2), "swing": round(cap * (1 - share), 2)}
+    @property
     def day(self):
         return dict(self.raw.get("day", {}))
+    @property
+    def swing(self):
+        return dict(self.raw.get("swing", {}))
     DAY_EXIT_KEYS = ("stop_loss_pct", "take_profit_pct", "trail_trigger_pct", "trail_pct")
+    def risk_for(self, book):
+        """The risk dict for one book: the day book swaps in its own exit numbers and cap; the swing book keeps the preset's."""
+        r = dict(self.risk)
+        if book == "day": r.update({k: v for k, v in self.day.items() if k in self.DAY_EXIT_KEYS})
+        r["capital_cap"] = self.books.get(book, r["capital_cap"])
+        r["vol"] = self.day if book == "day" else self.swing
+        return r
     @property
     def llm(self):
         d = dict(self.raw.get("llm", {}))
@@ -56,8 +73,6 @@ class Config:
         preset = dict(self.AGGRESSION.get(self.aggression, {}))
         preset.pop("name", None)
         r.update(preset)
-        if self.hold_mode == "day":
-            r.update({k: v for k, v in self.day.items() if k in self.DAY_EXIT_KEYS})
         r.update({k: v for k, v in self.overrides.items() if k in self.EDITABLE})
         return r
     def get(self, key):
@@ -65,7 +80,7 @@ class Config:
 
     def set(self, key, value):
         if key == "hold_mode":
-            if value not in ("day", "swing"): raise ValueError("hold_mode must be day or swing")
+            if value not in ("day", "swing", "both"): raise ValueError("hold_mode must be day, swing, or both")
             self.overrides["hold_mode"] = value; self._save(); return
         if key not in self.EDITABLE:
             raise ValueError(f"{key} is not editable")

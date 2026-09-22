@@ -1,6 +1,6 @@
 # Day mode
 
-Read with `ming.md` whenever `hold_mode` is day. This is how you trade when every position must be closed by the bell.
+Read with `ming.md` whenever a day book is running (`hold_mode` day or both). This is how the day book trades: every position in it is closed by the bell. In both mode the swing book runs beside it on the timetable in `ming.md`, and you tag each thesis with the book it belongs to.
 
 ## The shape of a day
 
@@ -29,8 +29,9 @@ Read with `ming.md` whenever `hold_mode` is day. This is how you trade when ever
 
 ## Exits
 
-- The stop is set by the engine at entry and is tighter in day mode. You do not move it down. Ever.
-- The engine takes profit at the day target and trails the stop once the trade is working.
+- The stop and target are set by the engine at entry from the stock's own average daily range: half a day's range for the stop, one day's range for the target, clamped. A quiet stock gets a tight stop; a wild one gets room. You do not move a stop down. Ever.
+- The engine trails the stop once the trade is up by the stop distance.
+- No entries in the midday lull, 11:30 to 1:30 PM ET. Hunts skip it.
 - If the reason you bought is gone before the target, say so at the next hunt; the engine exits.
 - At 3:55 everything goes regardless of where it sits. A small loss at the close beats an overnight gap.
 

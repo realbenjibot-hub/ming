@@ -3,7 +3,8 @@ import json
 from .ideas import persona
 
 SCHEMA = """
-Schema: {"theses":[{"symbol":"NVDA","sector":"Semiconductors","catalyst":"one line, what happened","reason":"why it moves the stock in the next days","invalidation":"what would prove this wrong","conviction":7,"priced_in":false,"operator_directed":false,"sources":["SEC 8-K","CNBC"]}],"sat_out_because":"optional one line if the list is empty"}
+Schema: {"theses":[{"symbol":"NVDA","sector":"Semiconductors","catalyst":"one line, what happened","reason":"why it moves the stock in the next days","invalidation":"what would prove this wrong","conviction":7,"priced_in":false,"operator_directed":false,"horizon":"day","sources":["SEC 8-K","CNBC"]}],"sat_out_because":"optional one line if the list is empty"}
+horizon is "day" when the catalyst plays out within today's session and "swing" when it needs days. Set it on every thesis.
 Rules: long only; US stocks and ETFs above the price floor; conviction is 1 to 10; max theses as instructed; an empty list is allowed and often right.
 A thesis with priced_in true must have conviction 5 or lower. Every thesis must name at least one source from the pack. Do not invent tickers.
 If the operator's direction applies, say so in reason and set operator_directed true."""
@@ -17,7 +18,11 @@ class Analyst:
         risk = self.cfg.risk
         which = "intraday hunt" if intraday else ("9:00 refresh" if refresh else "6:00 research pass")
         sys = persona(self.cfg.hold_mode) + f"\n\nYou are running the {which}. Current rules: min price ${risk['min_price']}, min conviction to trade {risk['min_conviction']}, max positions {risk['max_positions']}, stop {risk['stop_loss_pct']}%, target {risk['take_profit_pct']}%. Write at most {self.cfg.llm.get('max_theses',8)} theses."
-        if self.cfg.hold_mode == "day":
+        if self.cfg.hold_mode == "both" and not intraday:
+            sys += (f"\n\nTWO BOOKS. You run a day book and a swing book side by side, each with its own capital. Tag every thesis with horizon day or swing. "
+                    f"Day: the catalyst plays out within today's session and the position is sold at {self.cfg.schedule.get('flatten', '15:55')} ET; it needs volume behind it now. Swing: the catalyst needs days; the position rides a wider stop. "
+                    "A name can be in only one book. When in doubt, swing.")
+        if intraday or self.cfg.hold_mode == "day":
             sys += (f"\n\nDAY MODE. Every position is sold at {self.cfg.schedule.get('flatten', '15:55')} ET today, no exceptions. A thesis only counts if the catalyst can move the stock within hours, today. "
                     "Yesterday's news that already gapped at the open is priced in. Prefer fresh catalysts with volume behind them: an earnings beat still running, guidance, an FDA decision, a contract, an upgrade this morning, a sector move with a clear driver. "
                     "Avoid names that already ran more than 15% today unless the catalyst is still unfolding, thin names, and anything without a source in the pack. Fewer, cleaner theses beat a long list.")
@@ -35,10 +40,17 @@ class Analyst:
                 if not sym or len(sym) > 6: continue
                 th.append({"symbol": sym, "sector": t.get("sector", ""), "catalyst": str(t.get("catalyst", ""))[:300], "reason": str(t.get("reason", ""))[:500],
                            "invalidation": str(t.get("invalidation", ""))[:300], "conviction": max(1, min(10, int(t.get("conviction", 0)))),
-                           "priced_in": bool(t.get("priced_in")), "operator_directed": bool(t.get("operator_directed")), "sources": t.get("sources", [])})
+                           "priced_in": bool(t.get("priced_in")), "operator_directed": bool(t.get("operator_directed")), "sources": t.get("sources", []),
+                           "book": self._book(t, intraday)})
             except Exception: continue
         th.sort(key=lambda x: -x["conviction"])
         return th, out.get("sat_out_because", "")
+
+    def _book(self, t, intraday):
+        hm = self.cfg.hold_mode
+        if intraday or hm == "day": return "day"
+        if hm == "swing": return "swing"
+        return "day" if str(t.get("horizon", "")).lower().startswith("day") else "swing"
 
     def invalidated(self, trade, thesis, price, news_lines):
         """Afternoon check: is the reason for the trade gone? Returns (bool, why)."""
