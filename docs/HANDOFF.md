@@ -19,8 +19,7 @@ One 1920x1080 frame, scaled and letterboxed, no scrolling. Readouts in the dark 
 - Volume attached 09-21 ~14:09 UTC. Journal has survived redeploys since.
 - First position: BUY 75 NVO @ 39.89, stop 36.70, conviction 6, 09-21 15:49 UTC. Taken because the dial was at 10 (Full send: bar conviction 5, 8 positions, 30 percent per name, 8 percent daily cap). Claude recommends 5 (Balanced) after this position closes; Caden's call.
 - Bugs fixed 09-21: manual runs were labeled as the 6:00 pass; feed timestamps were UTC not ET. Both made him treat real news as the future. 09-22 6:00 is the first run with the fix.
-- 09-22: both books shipped. NVO sits in the swing book and is not flattened.
-- Recommendation standing: dial 6 (Leaning in: conviction 7, 5 slots per book, 18 percent per name) and capital_cap 20000 so each book runs $10,000. Caden's call.
+- 09-22: both books shipped, then Caden chose day only for the two-week trial: hold_mode day, capital_cap 20000 in config.yaml, dial 6 set by Caden on the page. NVO stays in the swing book under its broker stop; the 15:45 review still runs in day mode and manages it (trail, target, invalidation). Swing gets its own two weeks after.
 - Open question from Caden: raise capital_cap to the real amount he intends to trade after the trial (he liked the idea). Not yet set.
 
 ## Working method
