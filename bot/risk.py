@@ -57,46 +57,59 @@ class Risk:
         return True
 
     # ---- entries ----
-    def entry_window(self):
-        """Day mode: entries only while the market is open and before last_entry. Returns (ok, why)."""
-        if self.cfg.hold_mode != "day": return True, None
+    def entry_window(self, book="day"):
+        """Day book: entries only while the market is open, before last_entry, and outside the no-entry windows. Swing book: always. Returns (ok, why)."""
+        if book != "day": return True, None
         from zoneinfo import ZoneInfo
-        now = dt.datetime.now(ZoneInfo(self.cfg.tz)); hhmm = now.strftime("%H:%M")
+        now = dt.datetime.now(ZoneInfo(self.cfg.tz)); hhmm = now.strftime("%H:%M"); d = self.cfg.day
         if now.weekday() > 4: return False, "weekend"
         try: is_open = bool(self.b.clock().get("is_open"))
         except Exception: is_open = "09:30" <= hhmm < "16:00"
         if not is_open: return False, "market closed"
-        if hhmm >= self.cfg.day.get("last_entry", "15:00"): return False, f"past last entry {self.cfg.day.get('last_entry', '15:00')} ET"
+        if hhmm >= d.get("last_entry", "15:00"): return False, f"past last entry {d.get('last_entry', '15:00')} ET"
+        for a, z in d.get("no_entry_windows", []) or []:
+            if a <= hhmm < z: return False, f"midday pause {a}-{z} ET"
         return True, None
 
-    def size(self, thesis, positions, prices):
-        """Return (qty, stop, reject_reason). qty 0 with a reason means skip."""
-        r = self.cfg.risk; sym = thesis["symbol"]
-        if thesis["conviction"] < r["min_conviction"]: return 0, None, f"conviction {thesis['conviction']} < {r['min_conviction']}"
-        if thesis.get("priced_in"): return 0, None, "already priced in"
-        if any(p["symbol"] == sym for p in positions): return 0, None, "already held"
-        if len(positions) >= r["max_positions"]: return 0, None, f"no slot ({len(positions)}/{r['max_positions']})"
+    def exits_for(self, book, stat):
+        """Stop, target, and trail for one entry, as percents. Scaled to the stock's average daily range when we have it, clamped; the book's fixed numbers otherwise."""
+        r = self.cfg.risk_for(book); v = r["vol"]; atr = (stat or {}).get("atr_pct")
+        if atr and v.get("stop_atr_mult"):
+            stop = min(max(atr * v["stop_atr_mult"], v["stop_min_pct"]), v["stop_max_pct"])
+            target = min(max(atr * v["target_atr_mult"], v["target_min_pct"]), v["target_max_pct"])
+            return {"stop_pct": round(stop, 2), "target_pct": round(target, 2), "trail_trigger_pct": round(stop, 2), "trail_pct": round(stop * 0.66, 2), "atr_pct": atr}
+        return {"stop_pct": r["stop_loss_pct"], "target_pct": r["take_profit_pct"], "trail_trigger_pct": r["trail_trigger_pct"], "trail_pct": r["trail_pct"], "atr_pct": None}
+
+    def size(self, thesis, positions, prices, book="swing", all_symbols=(), stat=None):
+        """Return (qty, stop, reject_reason, exits). qty 0 with a reason means skip. positions are this book's; all_symbols is every open name in any book."""
+        r = self.cfg.risk_for(book); sym = thesis["symbol"]
+        if thesis["conviction"] < r["min_conviction"]: return 0, None, f"conviction {thesis['conviction']} < {r['min_conviction']}", None
+        if thesis.get("priced_in"): return 0, None, "already priced in", None
+        if sym in set(all_symbols) or any(p["symbol"] == sym for p in positions): return 0, None, "already held", None
+        if len(positions) >= r["max_positions"]: return 0, None, f"no slot ({len(positions)}/{r['max_positions']} {book})", None
         sector = (thesis.get("sector") or "").lower()
         if sector:
             same = sum(1 for p in positions if (p.get("sector") or "").lower() == sector)
-            if same >= r["max_sector_positions"]: return 0, None, f"sector cap ({sector})"
+            if same >= r["max_sector_positions"]: return 0, None, f"sector cap ({sector})", None
         px = prices.get(sym)
-        if not px: return 0, None, "no price"
-        if px < r["min_price"]: return 0, None, f"price ${px:.2f} below floor"
+        if not px: return 0, None, "no price", None
+        if px < r["min_price"]: return 0, None, f"price ${px:.2f} below floor", None
         deployed = sum(p["qty"] * p["price"] for p in positions)
         room = r["capital_cap"] - deployed
         dollars = min(r["capital_cap"] * r["max_position_pct"] / 100, room)
         qty = int(dollars // px)
-        if qty < 1: return 0, None, f"no room (${room:.0f} left)"
-        stop = round(px * (1 - r["stop_loss_pct"] / 100), 2)
-        return qty, stop, None
+        if qty < 1: return 0, None, f"no room (${room:.0f} left in {book})", None
+        ex = self.exits_for(book, stat)
+        stop = round(px * (1 - ex["stop_pct"] / 100), 2)
+        return qty, stop, None, ex
 
     # ---- exits ----
     def exit_rules(self, trade, price):
-        """Return ('take_profit'|'trail'|None, new_stop). trail returns the raised stop."""
-        r = self.cfg.risk; e = trade["entry"]; gain = (price / e - 1) * 100
-        if gain >= r["take_profit_pct"]: return "take_profit", None
-        if gain >= r["trail_trigger_pct"]:
-            new_stop = round(price * (1 - r["trail_pct"] / 100), 2)
+        """Return ('take_profit'|'trail'|None, new_stop). Uses the trade's own numbers, set at entry; falls back to the book's."""
+        r = self.cfg.risk_for(trade.get("book") or "swing"); e = trade["entry"]; gain = (price / e - 1) * 100
+        target = trade.get("target_pct") or r["take_profit_pct"]; trig = trade.get("trail_trigger_pct") or r["trail_trigger_pct"]; trail = trade.get("trail_pct") or r["trail_pct"]
+        if gain >= target: return "take_profit", None
+        if gain >= trig:
+            new_stop = round(price * (1 - trail / 100), 2)
             if new_stop > (trade["stop"] or 0): return "trail", new_stop
         return None, None

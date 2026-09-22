@@ -46,6 +46,20 @@ class Research:
         except Exception as e:
             self.j.log("WARN", f"firecrawl failed: {type(e).__name__}"); return []
 
+    def stats_for(self, syms):
+        try: return self.b.stats(syms)
+        except Exception as e:
+            self.j.log("WARN", f"stats failed: {type(e).__name__}"); return {}
+    @staticmethod
+    def stat_str(d):
+        """gap +3.1% relvol 2.4x range 4.0% atr 3.2%: what the analyst sees next to a name. Missing pieces are left out."""
+        bits = []
+        if "gap_pct" in d: bits.append(f"gap {d['gap_pct']:+.1f}%")
+        if "rel_vol" in d: bits.append(f"relvol {d['rel_vol']:.1f}x")
+        if "range_pct" in d: bits.append(f"range {d['range_pct']:.1f}%")
+        if "atr_pct" in d: bits.append(f"atr {d['atr_pct']:.1f}%")
+        return ("  [" + " ".join(bits) + "]") if bits else ""
+
     def gather(self, refresh=False, intraday=False):
         """refresh=True is the 9:00 pass: movers, latest news, filings since 6:00. intraday=True is a day-mode hunt: the last hour only. Returns a text pack and a dict of parts."""
         parts = {}
@@ -68,9 +82,13 @@ class Research:
             self.j.log("WARN", f"alpaca news failed: {type(e).__name__}"); parts["alpaca_news"] = []
         try:
             m = self.b.movers(top=25); minp = self.cfg.get("min_price")
-            parts["movers"] = [f"{x['symbol']} ${x['price']:.2f} {x['change_pct']:+.1f}%" for x in m["gainers"] + m["losers"] if x["price"] >= minp]
+            mv = [x for x in m["gainers"] + m["losers"] if x["price"] >= minp]
+            newsyms = [sym for n in (self.b.news(limit=40) if not parts.get("alpaca_news") else []) for sym in n["symbols"][:2]]
+            stats = self.stats_for([x["symbol"] for x in mv] + newsyms)
+            parts["movers"] = [f"{x['symbol']} ${x['price']:.2f} {x['change_pct']:+.1f}%" + self.stat_str(stats.get(x["symbol"], {})) for x in mv]
+            parts["stats"] = stats
         except Exception as e:
-            self.j.log("WARN", f"movers failed: {type(e).__name__}"); parts["movers"] = []
+            self.j.log("WARN", f"movers failed: {type(e).__name__}"); parts["movers"] = []; parts["stats"] = {}
         web = []
         if not intraday:
             for q in src.get("firecrawl_queries", []):
@@ -82,6 +100,7 @@ class Research:
         if intraday: pass_name = f"intraday hunt at {now.strftime('%H:%M')} ET, market open, day mode: everything closes at {self.cfg.day.get('flatten_at', self.cfg.schedule.get('flatten', '15:55'))} ET"
         else: pass_name = "9:00 pre-open refresh" if refresh else ("6:00 full research" if now.hour < 8 else f"full research run at {now.strftime('%H:%M')} ET (market {'open' if 9 <= now.hour < 16 else 'closed'})")
         pack = [f"NOW: {et}. PASS: {pass_name}. Everything in this pack timestamped before NOW has already happened; judge whether the move is already in the price.",
+                "Next to a name: gap is the move from the prior close; relvol is today's volume against its 20 day average (above 1.5x means the tape agrees); range is today's high to low; atr is the average daily range, which sets the stop.",
                 "\nOPERATOR DIRECTION (ideas.md):\n" + parts["ideas"]]
         for k, title in [("tier1", "TIER 1: SEC FILINGS AND PRESS WIRES (primary sources)"), ("tier2", "TIER 2: WIRE SERVICES AND MARKET NEWS"),
                          ("alpaca_news", "ALPACA NEWS FEED"), ("movers", "MOVERS (above the price floor; live session)" if intraday else "MOVERS (above the price floor; prior session unless pre-market)"), ("web", "WEB CONFIRMATION (Firecrawl)")]:

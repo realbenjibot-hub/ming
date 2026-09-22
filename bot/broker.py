@@ -45,6 +45,7 @@ class FakeBroker:
     def news(self, symbols=None, limit=50): return []
     def movers(self, top=20): return {"gainers": [], "losers": []}
     def tradable(self, s): return {"tradable": True, "price": self._price(s)}
+    def stats(self, syms): return {s: self.fake_stats.get(s, {}) for s in syms} if hasattr(self, "fake_stats") else {}
 
 
 class AlpacaBroker:
@@ -123,6 +124,44 @@ class AlpacaBroker:
         m = self.sc.get_market_movers(MarketMoversRequest(top=top))
         f = lambda xs: [{"symbol": x.symbol, "price": float(x.price), "change_pct": float(x.percent_change)} for x in xs]
         return {"gainers": f(m.gainers), "losers": f(m.losers)}
+    def stats(self, syms, days=21):
+        """Per symbol: gap from the prior close, today's volume against the 20 day average, average daily range (ATR as a percent of price), today's range.
+        One bars request for all names. Missing data means a missing key, never a guess."""
+        from alpaca.data.requests import StockBarsRequest, StockSnapshotRequest
+        from alpaca.data.timeframe import TimeFrame
+        syms = [x for x in dict.fromkeys(syms) if x]
+        if not syms: return {}
+        out = {}
+        try:
+            start = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=int(days * 1.6) + 5)
+            bars = self.dc.get_stock_bars(StockBarsRequest(symbol_or_symbols=syms, timeframe=TimeFrame.Day, start=start, limit=days * len(syms)))
+            data = bars.data if hasattr(bars, "data") else dict(bars)
+        except Exception: data = {}
+        try:
+            snaps = self.dc.get_stock_snapshot(StockSnapshotRequest(symbol_or_symbols=syms))
+        except Exception: snaps = {}
+        today = dt.datetime.now(dt.timezone.utc).date()
+        for s in syms:
+            bs = [b for b in (data.get(s) or []) if b.timestamp.date() < today][-20:]
+            snap = snaps.get(s); d = {}
+            if bs:
+                closes = [float(b.close) for b in bs]; vols = [float(b.volume) for b in bs]
+                trs = [(float(b.high) - float(b.low)) / float(b.close) * 100 for b in bs[-14:] if float(b.close) > 0]
+                if trs: d["atr_pct"] = round(sum(trs) / len(trs), 2)
+                d["prev_close"] = closes[-1]; d["avg_vol"] = sum(vols) / len(vols)
+            if snap is not None:
+                try:
+                    px = float(snap.latest_trade.price) if snap.latest_trade else None
+                    if px: d["price"] = px
+                    db = snap.daily_bar
+                    if db and db.timestamp.date() == today:
+                        d["open"] = float(db.open); d["vol"] = float(db.volume); d["high"] = float(db.high); d["low"] = float(db.low)
+                        if d.get("avg_vol"): d["rel_vol"] = round(d["vol"] / d["avg_vol"], 2)
+                        if px: d["range_pct"] = round((d["high"] - d["low"]) / px * 100, 2)
+                    if d.get("prev_close") and px: d["gap_pct"] = round((px / d["prev_close"] - 1) * 100, 2)
+                except Exception: pass
+            out[s] = d
+        return out
     def tradable(self, s):
         try:
             a = self.tc.get_asset(s)

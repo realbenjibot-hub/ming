@@ -19,6 +19,10 @@ class Journal:
         CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY, ts TEXT, level TEXT, msg TEXT);
         """)
         self.db.commit()
+        for tbl, col, typ in [("trades", "book", "TEXT DEFAULT 'swing'"), ("trades", "target_pct", "REAL"), ("trades", "trail_trigger_pct", "REAL"), ("trades", "trail_pct", "REAL"), ("trades", "stop_pct", "REAL"),
+                              ("theses", "book", "TEXT")]:
+            if col not in [r[1] for r in self.db.execute(f"PRAGMA table_info({tbl})").fetchall()]:
+                self.db.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typ}"); self.db.commit()
 
     def _x(self, sql, *args):
         with self.lock:
@@ -49,9 +53,9 @@ class Journal:
     def add_theses(self, day, theses, source="research"):
         ids = []
         for t in theses:
-            cur = self._x("INSERT INTO theses(day,ts,symbol,sector,catalyst,reason,invalidation,conviction,source,operator_directed) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            cur = self._x("INSERT INTO theses(day,ts,symbol,sector,catalyst,reason,invalidation,conviction,source,operator_directed,book) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                           day, self.now(), t["symbol"], t.get("sector"), t.get("catalyst"), t.get("reason"), t.get("invalidation"),
-                          int(t.get("conviction", 0)), source, int(bool(t.get("operator_directed"))))
+                          int(t.get("conviction", 0)), source, int(bool(t.get("operator_directed"))), t.get("book"))
             ids.append(cur.lastrowid)
         return ids
     def theses_for(self, day):
@@ -65,11 +69,13 @@ class Journal:
         return self.add_theses(day, theses, source)
 
     # trades
-    def open_trade(self, symbol, qty, entry, stop, thesis_id, order_id, stop_order_id):
-        cur = self._x("INSERT INTO trades(symbol,side,qty,entry,entry_ts,stop,thesis_id,order_id,stop_order_id) VALUES(?,?,?,?,?,?,?,?,?)",
-                      symbol, "long", qty, entry, self.now(), stop, thesis_id, order_id, stop_order_id)
+    def open_trade(self, symbol, qty, entry, stop, thesis_id, order_id, stop_order_id, book="swing", exits=None):
+        e = exits or {}
+        cur = self._x("INSERT INTO trades(symbol,side,qty,entry,entry_ts,stop,thesis_id,order_id,stop_order_id,book,stop_pct,target_pct,trail_trigger_pct,trail_pct) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                      symbol, "long", qty, entry, self.now(), stop, thesis_id, order_id, stop_order_id, book, e.get("stop_pct"), e.get("target_pct"), e.get("trail_trigger_pct"), e.get("trail_pct"))
         return cur.lastrowid
-    def open_trades(self):
+    def open_trades(self, book=None):
+        if book: return self._q("SELECT * FROM trades WHERE status='open' AND book=? ORDER BY id", book)
         return self._q("SELECT * FROM trades WHERE status='open' ORDER BY id")
     def trade_for(self, symbol):
         r = self._q("SELECT * FROM trades WHERE status='open' AND symbol=? ORDER BY id DESC LIMIT 1", symbol)
@@ -81,7 +87,8 @@ class Journal:
         pl = (exit_price - t["entry"]) * t["qty"]
         self._x("UPDATE trades SET exit=?, exit_ts=?, exit_reason=?, pl=?, status='closed' WHERE id=?", exit_price, self.now(), reason, pl, tid)
         return pl
-    def closed_trades(self, n=200):
+    def closed_trades(self, n=200, book=None):
+        if book: return self._q("SELECT * FROM trades WHERE status='closed' AND book=? ORDER BY id DESC LIMIT ?", book, n)
         return self._q("SELECT * FROM trades WHERE status='closed' ORDER BY id DESC LIMIT ?", n)
     def all_trades(self, n=200):
         return self._q("SELECT * FROM trades ORDER BY id DESC LIMIT ?", n)
