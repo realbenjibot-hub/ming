@@ -6,6 +6,7 @@ hold_mode: day             # day | swing | both. day: flat by the close, intrada
 schedule:                  # weekdays, Eastern. review runs in swing mode only; flatten and the intraday jobs run in day mode only.
   research: "06:00"
   refresh:  "09:00"
+  sweep:    "09:31"        # day mode: sell any day-book position left over from an earlier day
   execute:  "09:35"
   review:   "15:45"
   flatten:  "15:55"

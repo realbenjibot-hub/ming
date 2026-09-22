@@ -146,9 +146,17 @@ class Executor:
                 except Exception as e: self.j.log("ERROR", f"{sym} trail failed: {str(e)[:120]}")
         self._mark_equity()
 
-    def flatten(self, book="day"):
-        """15:55: sell everything still open in the day book. book=None flattens both; that is the operator's 'go flat'."""
+    def flatten(self, book="day", stale_only=False):
+        """15:55: sell everything still open in the day book. book=None flattens both; that is the operator's 'go flat'. stale_only: only trades opened before today."""
         trades = self.j.open_trades(book)
+        if stale_only:
+            today = dt.date.today().isoformat()
+            trades = [t for t in trades if (t["entry_ts"] or "")[:10] < today]
+            if not trades: return []
+            self.j.log("FLATTEN", f"sweep: {len(trades)} day-book position(s) held overnight; selling at the open")
+        try:
+            if not self.b.clock().get("is_open", True): self.j.log("WARN", "flatten with the market closed: orders will fill at the next session")
+        except Exception: pass
         if not trades: self.j.log("FLATTEN", "nothing open"); self._mark_equity(); return []
         held = {p["symbol"] for p in self.b.positions()}
         prices = self.b.prices_for([t["symbol"] for t in trades])
