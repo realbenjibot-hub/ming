@@ -15,10 +15,15 @@ class Report:
         except Exception: pass
         spy_ret = ((spy / spy0 - 1) * 100) if (spy and spy0) else 0.0
         bot_ret = pnl / cap * 100
-        closed = self.j.closed_trades(); wins = [t for t in closed if (t["pl"] or 0) > 0]
+        closed = self._since_baseline(self.j.closed_trades()); wins = [t for t in closed if (t["pl"] or 0) > 0]
         return {"equity": acct["equity"], "cash": acct["cash"], "pnl": pnl, "day_pnl": day, "bot_return_pct": bot_ret, "spy_return_pct": spy_ret,
                 "edge_pts": bot_ret - spy_ret, "closed_trades": len(closed), "hit_rate": (len(wins) / len(closed) * 100) if closed else None,
                 "realized": sum(t["pl"] or 0 for t in closed), "capital_cap": cap}
+
+    def _since_baseline(self, trades):
+        """Only trades closed after the current baseline count on the scorecard. Resume resets the baseline, so it also resets the record."""
+        b0 = self.j.get("baseline_ts") or ""
+        return [t for t in trades if (t.get("exit_ts") or "") >= b0]
 
     def books(self):
         """Per book: realized plus unrealized against that book's cap, edge vs SPY over the same baseline, open, closed, hit rate."""
@@ -31,7 +36,7 @@ class Report:
         try: prices = self.b.prices_for([t["symbol"] for t in open_all]) if open_all else {}
         except Exception: pass
         for book, cap in self.cfg.books.items():
-            closed = self.j.closed_trades(500, book); opens = [t for t in open_all if (t.get("book") or "swing") == book]
+            closed = self._since_baseline(self.j.closed_trades(500, book)); opens = [t for t in open_all if (t.get("book") or "swing") == book]
             realized = sum(t["pl"] or 0 for t in closed)
             unreal = sum(((prices.get(t["symbol"]) or t["entry"]) - t["entry"]) * t["qty"] for t in opens)
             wins = [t for t in closed if (t["pl"] or 0) > 0]; losses = [t for t in closed if (t["pl"] or 0) <= 0]

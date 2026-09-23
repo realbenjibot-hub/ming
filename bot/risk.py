@@ -113,7 +113,8 @@ class Risk:
         sector = (thesis.get("sector") or "").lower()
         if sector and sum(1 for p in positions if (p.get("sector") or "").lower() == sector) >= r["max_sector_positions"]: return 0, None, f"sector cap ({sector})", None
         ask = contract["ask"]
-        deployed = sum(p["qty"] * p["price"] * 100 for p in positions)
+        from .broker import is_option
+        deployed = sum(p["qty"] * p["price"] * (100 if (is_option(p["symbol"]) or p.get("underlying")) else 1) for p in positions)   # shares count once, contracts x100
         room = r["capital_cap"] - deployed
         dollars = min(r["capital_cap"] * float(o.get("max_position_pct", 10)) / 100, room)
         qty = int(dollars // (ask * 100))
