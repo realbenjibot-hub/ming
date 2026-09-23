@@ -41,7 +41,7 @@ options:                   # the day book when instrument is options. Everything
   min_open_interest: 100
   max_spread_pct: 10       # (ask - bid) / mid; wider than this is skipped
   min_premium: 0.30        # per share; cheaper contracts are lottery tickets
-  max_position_pct: 10     # of the day book's cap in premium per trade (replaces the preset's number for options)
+  max_position_pct: 4      # of the cap in premium per trade. With the 35% stop that risks about 1.4% of the cap per trade, so three losers fit inside the daily cap. 09-23: was 10, and one stop equalled the whole daily cap.
   stop_pct: 35             # engine stop on the premium
   target_pct: 80
   trail_trigger_pct: 30

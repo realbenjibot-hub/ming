@@ -44,8 +44,15 @@ class Risk:
         self.j.log("HALT", reason)
 
     def check_caps(self):
-        """Called at the start of every run. Halts if a cap is breached. Returns True if trading may continue."""
-        if self.halted: return False
+        """Called at the start of every run. Halts if a cap is breached. Returns True if trading may continue.
+        A DAILY cap halt clears itself on the next trading day; a TOTAL cap halt and the kill switch wait for the operator."""
+        if self.halted:
+            reason = str(self.j.get("halt_reason", ""))
+            if reason.startswith("DAILY") and self.j.get("day_start_date") != dt.date.today().isoformat():
+                acct = self.b.account()
+                self.j.set("halted", False); self.j.set("halt_reason", ""); self.j.set("day_start_date", dt.date.today().isoformat()); self.j.set("day_start_equity", acct["equity"])
+                self.j.log("INFO", "new day: yesterday's daily loss halt cleared; trading resumes under the same caps")
+            else: return False
         acct = self.ensure_baselines()
         cap = self.cfg.get("capital_cap")
         day_pl = acct["equity"] - (self.j.get("day_start_equity") or acct["equity"])
