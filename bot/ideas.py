@@ -6,6 +6,7 @@ MING = ROOT / "ming" / "ming.md"
 OPERATOR = ROOT / "ming" / "operator.md"
 DAYMODE = ROOT / "ming" / "daytrading.md"
 IDEAS = DATA_DIR / "ideas.md"
+LESSONS = DATA_DIR / "lessons.md"
 
 def _read(p):
     try: return open(p).read()
@@ -17,7 +18,20 @@ def persona(hold_mode=None):
             from .config import Config; hold_mode = Config().hold_mode
         except Exception: hold_mode = "swing"
     extra = ("\n\n" + _read(DAYMODE)) if hold_mode == "day" else ""
+    les = lessons()
+    if les: extra += "\n\n## What you have learned from your own trades (newest last; these are yours, weigh them)\n" + les
     return _read(MING) + "\n\n" + _read(OPERATOR) + extra
+
+def lessons(max_lines=40):
+    """The last max_lines lessons Ming wrote about his own trades."""
+    lines = [l for l in _read(LESSONS).splitlines() if l.strip()]
+    return "\n".join(lines[-max_lines:])
+
+def add_lessons(day, items):
+    LESSONS.parent.mkdir(parents=True, exist_ok=True)
+    with open(LESSONS, "a") as f:
+        for it in items: f.write(f"- [{day}] {it.strip()}\n")
+    return lessons()
 
 def ideas():
     if not IDEAS.exists() and (ROOT / "ming" / "ideas.md").exists():   # first boot: seed from the repo

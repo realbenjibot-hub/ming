@@ -11,6 +11,7 @@ schedule:                  # weekdays, Eastern. review runs in swing mode only; 
   review:   "15:45"
   flatten:  "15:55"
   report:   "16:05"
+  reflect:  "16:10"        # lessons from the day's closed trades, written to lessons.md on the volume and read every morning
 
 books:                     # in both mode the capital cap is split between the two books; a name can sit in only one book at a time
   day_share_pct: 50        # share of capital_cap the day book gets; the swing book gets the rest

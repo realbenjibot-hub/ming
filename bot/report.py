@@ -1,6 +1,6 @@
-"""Daily report in Ming's voice, plus the numbers. Optional Telegram send."""
-import os, datetime as dt, httpx
-from .ideas import persona
+"""Daily report in Ming's voice, plus the numbers. Optional Telegram send. Nightly reflection: lessons from the day's closed trades."""
+import os, json, datetime as dt, httpx
+from .ideas import persona, add_lessons, lessons
 
 class Report:
     def __init__(self, cfg, broker, journal, llm):
@@ -87,6 +87,34 @@ class Report:
                                   "realized": round(sum((t["pl"] or 0) for t in tr if t["status"] == "closed" and (t["exit_ts"] or "")[:10] == day), 2)})
         self._telegram(report)
         return report
+
+    def reflect(self):
+        """16:10: read today's closed trades with their theses and exits; write one to three dated lessons with the evidence. Skipped when nothing closed."""
+        day = dt.date.today().isoformat()
+        closed = [t for t in self.j.closed_trades(100) if (t["exit_ts"] or "")[:10] == day]
+        if not closed: self.j.log("LESSON", "nothing closed today; nothing to learn from"); return []
+        if not self.llm.ready: self.j.log("LESSON", f"skipped: {self.llm.problem}"); return []
+        rows = []
+        for t in closed:
+            th = self.j._q("SELECT * FROM theses WHERE id=?", t["thesis_id"]); th = th[0] if th else {}
+            name = f"{t['underlying']} {t['strike']:g}{'C' if str(t.get('opt_type')).startswith('c') else 'P'} {str(t.get('expiry'))[5:]}" if t.get("opt_type") else t["symbol"]
+            held = ""
+            try:
+                a = dt.datetime.fromisoformat(t["entry_ts"]); b = dt.datetime.fromisoformat(t["exit_ts"]); held = f"{(b - a).total_seconds() / 60:.0f} min"
+            except Exception: pass
+            rows.append(f"- {name} [{t.get('book')}] entry {t['entry']:.2f} at {t['entry_ts'][11:16]}Z, exit {t['exit']:.2f} ({t['exit_reason']}) after {held}, P&L {t['pl']:+.2f}. "
+                        f"Thesis conv {th.get('conviction', '?')}, direction {th.get('direction', '?')}: {th.get('catalyst', '?')} | reason: {th.get('reason', '?')} | invalidation: {th.get('invalidation', '?')}")
+        sys = persona(self.cfg.hold_mode) + ("\n\nEnd of day. These are your closed trades with the thesis you wrote for each. Write one to three lessons you can act on tomorrow. "
+               "Each lesson names the pattern, the trade that shows it, and what you will do differently. A pattern from one trade is a hypothesis, say so. "
+               "No self-punishment, no spin. If a loss was a clean thesis that failed, say that and move on. "
+               "Respond with one JSON object only: {\"lessons\": [\"...\", \"...\"]}")
+        out = self.llm.json(sys, "TRADES TODAY:\n" + "\n".join(rows) + ("\n\nLESSONS SO FAR:\n" + lessons(20) if lessons() else ""), max_tokens=800)
+        items = [str(x)[:300] for x in (out or {}).get("lessons", []) if str(x).strip()][:3]
+        if not items: self.j.log("LESSON", "no lesson written"); return []
+        add_lessons(day, items)
+        for it in items: self.j.log("LESSON", it[:200])
+        self.j.set(f"lessons:{day}", items)
+        return items
 
     def _telegram(self, text):
         tok, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
