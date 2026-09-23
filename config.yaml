@@ -16,7 +16,8 @@ books:                     # in both mode the capital cap is split between the t
   day_share_pct: 50        # share of capital_cap the day book gets; the swing book gets the rest
 
 day:                       # the day book
-  scan_every_min: 5        # intraday position check: stop-outs, targets, trailing stops. No LLM.
+  instrument: options      # options | stock. options: long calls and long puts only (Caden's override of the no-options rule, 09-23). stock: shares.
+  scan_every_min: 2        # intraday position check: stop-outs, targets, trailing stops. No LLM. Options stops live in the engine, so this is the stop.
   hunt_every_min: 30       # intraday research: fresh news and movers -> new theses -> rules engine -> entries
   first_hunt: "10:00"      # first intraday hunt, ET (9:35 execute already took the morning theses)
   last_entry: "15:00"      # no new entries after this, ET
@@ -31,6 +32,20 @@ day:                       # the day book
   stop_max_pct: 3
   target_min_pct: 2.5
   target_max_pct: 10
+
+options:                   # the day book when instrument is options. Everything here is in percent of the premium paid.
+  dte_min: 3               # days to expiry window; closest to dte_target wins
+  dte_max: 14
+  dte_target: 7
+  delta_target: 0.45       # strike closest to this delta (near the money); nearest to the underlying price when greeks are missing
+  min_open_interest: 100
+  max_spread_pct: 10       # (ask - bid) / mid; wider than this is skipped
+  min_premium: 0.30        # per share; cheaper contracts are lottery tickets
+  max_position_pct: 10     # of the day book's cap in premium per trade (replaces the preset's number for options)
+  stop_pct: 35             # engine stop on the premium
+  target_pct: 80
+  trail_trigger_pct: 30
+  trail_pct: 20
 
 swing:                     # the swing book. Stop and target fall back to the aggression preset when there is no volatility data.
   stop_atr_mult: 1.5

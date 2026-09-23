@@ -587,7 +587,7 @@ async function load(){
   try{
     const s=await api('/api/state');state=s;
     setMood(s);
-    $('#modeText').textContent=s.mode+(s.hold_mode?' · '+s.hold_mode:''); $('#modeBadge').className='badge'+(s.mode==='live'?' live':'');
+    $('#modeText').textContent=s.mode+(s.hold_mode?' · '+s.hold_mode:'')+(s.instrument==='options'?' · options':''); $('#modeBadge').className='badge'+(s.mode==='live'?' live':'');
     if(s.schedule){const key=JSON.stringify(s.schedule);if(key!==schedKey){schedKey=key;$('#sched').innerHTML=s.schedule.map(r=>`<span data-m="${r.m}"><b>${r.time}</b>${r.label}</span>`).join('');schedTick()}}
     const isDay=!!(s.books&&s.books.day);$('#huntBtn').style.display=isDay?'':'none';$('#flatBtn').style.display=isDay?'':'none';
     for(const k of ['day','swing']){const b=s.books&&s.books[k];const row=$('#bk'+(k==='day'?'Day':'Swing'));row.style.display=b?'':'none';if(b)$('#bk'+(k==='day'?'Day':'Swing')+'V').textContent=`${sign(b.return_pct)}% · ${b.open} on · ${b.closed} closed${b.hit_rate!=null?' · '+b.hit_rate+'%':''}`}
@@ -601,7 +601,7 @@ async function load(){
     $('#closed').textContent=s.closed_trades; $('#hit').textContent=s.hit_rate==null?'--':fmt(s.hit_rate,0)+'%';
     const pl=$('#posList'); pl.innerHTML=''; $('#posN').textContent=`${s.positions.length}/${s.config.max_positions}`;
     if(!s.positions.length)pl.innerHTML='<div class="cat">Nothing on. He is watching.</div>';
-    for(const q of s.positions){pl.insertAdjacentHTML('beforeend',`<div class="pos" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${q.symbol}</span><span class="pl mono ${cls(q.pl)}">${sign(q.pl_pct)}%<small>${sign(q.pl)}</small></span></div><div class="more"><span class="mono">${q.book||''}${q.book?' · ':''}${fmt(q.qty,0)} @ ${fmt(q.entry)} · stop ${q.stop?fmt(q.stop):'-'}${q.target_pct?' · target +'+q.target_pct+'%':''}</span><br>${q.thesis?q.thesis.catalyst:''}</div></div>`)}
+    for(const q of s.positions){pl.insertAdjacentHTML('beforeend',`<div class="pos" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${q.label||q.symbol}</span><span class="pl mono ${cls(q.pl)}">${sign(q.pl_pct)}%<small>${sign(q.pl)}</small></span></div><div class="more"><span class="mono">${q.book||''}${q.book?' · ':''}${fmt(q.qty,0)} @ ${fmt(q.entry)} · stop ${q.stop?fmt(q.stop):'-'}${q.target_pct?' · target +'+q.target_pct+'%':''}</span><br>${q.thesis?q.thesis.catalyst:''}</div></div>`)}
     try{const hs=await api('/api/history?n=20');const hl=$('#histList');hl.innerHTML='';
       if(!hs.length)hl.innerHTML='<div class="cat">No days on the record yet.</div>';
       for(const h of hs){const wk=new Date(h.day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short'});hl.insertAdjacentHTML('beforeend',`<div class="hd"><span class="d mono">${h.day.slice(5)}<small>${wk}${h.source==='live'?' · live':''}</small></span><span class="v mono ${h.pnl?cls(h.pnl):''}">${sign(h.pnl)}<small>${sign(h.pct)}%</small></span></div>`)}

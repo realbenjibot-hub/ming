@@ -44,6 +44,12 @@ class Config:
     @property
     def swing(self):
         return dict(self.raw.get("swing", {}))
+    @property
+    def options(self):
+        return dict(self.raw.get("options", {}))
+    @property
+    def day_instrument(self):
+        return str(self.day.get("instrument", "stock"))
     DAY_EXIT_KEYS = ("stop_loss_pct", "take_profit_pct", "trail_trigger_pct", "trail_pct")
     def risk_for(self, book):
         """The risk dict for one book: the day book swaps in its own exit numbers and cap; the swing book keeps the preset's."""

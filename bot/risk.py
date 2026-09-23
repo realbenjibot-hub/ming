@@ -103,11 +103,31 @@ class Risk:
         stop = round(px * (1 - ex["stop_pct"] / 100), 2)
         return qty, stop, None, ex
 
+    def size_option(self, thesis, positions, book, contract, all_underlyings=()):
+        """Contracts to buy: a slice of the book's cap in premium, within the room left. Returns (qty, stop, reject_reason, exits)."""
+        r = self.cfg.risk_for(book); o = self.cfg.options; sym = thesis["symbol"]
+        if thesis["conviction"] < r["min_conviction"]: return 0, None, f"conviction {thesis['conviction']} < {r['min_conviction']}", None
+        if thesis.get("priced_in"): return 0, None, "already priced in", None
+        if sym in set(all_underlyings): return 0, None, "already held", None
+        if len(positions) >= r["max_positions"]: return 0, None, f"no slot ({len(positions)}/{r['max_positions']} {book})", None
+        sector = (thesis.get("sector") or "").lower()
+        if sector and sum(1 for p in positions if (p.get("sector") or "").lower() == sector) >= r["max_sector_positions"]: return 0, None, f"sector cap ({sector})", None
+        ask = contract["ask"]
+        deployed = sum(p["qty"] * p["price"] * 100 for p in positions)
+        room = r["capital_cap"] - deployed
+        dollars = min(r["capital_cap"] * float(o.get("max_position_pct", 10)) / 100, room)
+        qty = int(dollars // (ask * 100))
+        if qty < 1: return 0, None, f"premium {ask:.2f} x100 above the ${dollars:.0f} slice", None
+        ex = {"stop_pct": float(o["stop_pct"]), "target_pct": float(o["target_pct"]), "trail_trigger_pct": float(o["trail_trigger_pct"]), "trail_pct": float(o["trail_pct"]), "atr_pct": None}
+        stop = round(ask * (1 - ex["stop_pct"] / 100), 2)
+        return qty, stop, None, ex
+
     # ---- exits ----
     def exit_rules(self, trade, price):
         """Return ('take_profit'|'trail'|None, new_stop). Uses the trade's own numbers, set at entry; falls back to the book's."""
         r = self.cfg.risk_for(trade.get("book") or "swing"); e = trade["entry"]; gain = (price / e - 1) * 100
         target = trade.get("target_pct") or r["take_profit_pct"]; trig = trade.get("trail_trigger_pct") or r["trail_trigger_pct"]; trail = trade.get("trail_pct") or r["trail_pct"]
+        if not trade.get("stop_order_id") and trade.get("stop") and price <= trade["stop"]: return "stop", None   # engine-held stop (options have no broker stop)
         if gain >= target: return "take_profit", None
         if gain >= trig:
             new_stop = round(price * (1 - trail / 100), 2)

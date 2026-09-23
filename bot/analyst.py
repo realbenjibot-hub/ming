@@ -3,7 +3,8 @@ import json
 from .ideas import persona
 
 SCHEMA = """
-Schema: {"theses":[{"symbol":"NVDA","sector":"Semiconductors","catalyst":"one line, what happened","reason":"why it moves the stock in the next days","invalidation":"what would prove this wrong","conviction":7,"priced_in":false,"operator_directed":false,"horizon":"day","sources":["SEC 8-K","CNBC"]}],"sat_out_because":"optional one line if the list is empty","thinking":"two short sentences in your own voice: what you are watching right now and what you would trade next, or why you are waiting"}
+Schema: {"theses":[{"symbol":"NVDA","sector":"Semiconductors","catalyst":"one line, what happened","reason":"why it moves the stock in the next days","invalidation":"what would prove this wrong","conviction":7,"priced_in":false,"operator_directed":false,"horizon":"day","direction":"up","sources":["SEC 8-K","CNBC"]}],"sat_out_because":"optional one line if the list is empty","thinking":"two short sentences in your own voice: what you are watching right now and what you would trade next, or why you are waiting"}
+direction is "up" or "down": the way the catalyst pushes the stock. In stock mode only "up" can be traded; in options mode "down" becomes a put.
 thinking is required on every pass, even when the list is empty. Plain words, no tickers you did not source, no price predictions.
 horizon is "day" when the catalyst plays out within today's session and "swing" when it needs days. Set it on every thesis.
 Rules: long only; US stocks and ETFs above the price floor; conviction is 1 to 10; max theses as instructed; an empty list is allowed and often right.
@@ -23,6 +24,9 @@ class Analyst:
             sys += (f"\n\nTWO BOOKS. You run a day book and a swing book side by side, each with its own capital. Tag every thesis with horizon day or swing. "
                     f"Day: the catalyst plays out within today's session and the position is sold at {self.cfg.schedule.get('flatten', '15:55')} ET; it needs volume behind it now. Swing: the catalyst needs days; the position rides a wider stop. "
                     "A name can be in only one book. When in doubt, swing.")
+        if self.cfg.day_instrument == "options" and (intraday or self.cfg.hold_mode == "day"):
+            sys += ("\n\nOPTIONS. The day book buys calls on up catalysts and puts on down catalysts, a week out, near the money, and sells by the close. "
+                    "A contract can lose a third of its value on a wrong hour, so conviction means the move happens today, not eventually. Bad news is tradable: set direction down. Never suggest selling options or spreads; the engine cannot and will not.")
         if intraday or self.cfg.hold_mode == "day":
             sys += (f"\n\nDAY MODE. Every position is sold at {self.cfg.schedule.get('flatten', '15:55')} ET today, no exceptions. A thesis only counts if the catalyst can move the stock within hours, today. "
                     "Yesterday's news that already gapped at the open is priced in. Prefer fresh catalysts with volume behind them: an earnings beat still running, guidance, an FDA decision, a contract, an upgrade this morning, a sector move with a clear driver. "
@@ -42,7 +46,7 @@ class Analyst:
                 th.append({"symbol": sym, "sector": t.get("sector", ""), "catalyst": str(t.get("catalyst", ""))[:300], "reason": str(t.get("reason", ""))[:500],
                            "invalidation": str(t.get("invalidation", ""))[:300], "conviction": max(1, min(10, int(t.get("conviction", 0)))),
                            "priced_in": bool(t.get("priced_in")), "operator_directed": bool(t.get("operator_directed")), "sources": t.get("sources", []),
-                           "book": self._book(t, intraday)})
+                           "book": self._book(t, intraday), "direction": "down" if str(t.get("direction", "up")).lower().startswith("d") else "up"})
             except Exception: continue
         th.sort(key=lambda x: -x["conviction"])
         thinking = str(out.get("thinking", "")).strip()[:400]
