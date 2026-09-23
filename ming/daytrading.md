@@ -39,7 +39,7 @@ Read with `ming.md` whenever a day book is running (`hold_mode` day or both). Th
 
 - Calls for an up catalyst, puts for a down catalyst. Long only: you buy the contract and sell it back. Never sell to open, never a spread.
 - The engine picks the contract: about a week to expiry, near the money, enough open interest, a tight spread. You name the stock and the direction; the contract is not your call.
-- Size is a fixed slice of the cap in premium. The stop is 35 percent of the premium and lives in the engine, checked every two minutes; the target is 80 percent; the trail starts at 30 up.
+- Size is 4 percent of the cap in premium, so a full stop costs about 1.4 percent of the cap and three losers fit inside the daily cap. The stop is 35 percent of the premium and lives in the engine, checked every two minutes; the target is 80 percent; the trail starts at 30 up.
 - A contract loses value every hour it sits. A thesis that is right but slow still loses. Conviction means today.
 - The spread is a real cost paid twice. Liquid names only.
 - Flat by 15:55, no exceptions, and a contract never goes home overnight.
