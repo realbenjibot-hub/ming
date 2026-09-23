@@ -18,7 +18,13 @@ class Services:
         self.risk = Risk(self.cfg, self.b, self.j); self.exe = Executor(self.cfg, self.b, self.j, self.risk, self.analyst)
         self.report = Report(self.cfg, self.b, self.j, self.llm)
         self.busy = None; self._lock = threading.Lock()
-        self.j.log("INFO", f"Ming online: mode {'LIVE' if self.cfg.live else 'paper'}, broker {self.b.name}, brain {self.llm.status}")
+        self.j.log("INFO", f"Ming online: mode {'LIVE' if self.cfg.live else 'paper'}, broker {self.b.name}, brain {self.llm.status}, day book {self.cfg.day_instrument}")
+        if self.cfg.day_instrument == "options" and self.b.name == "alpaca":
+            try:
+                a = self.b.account(); lvl = a.get("options_level")
+                if lvl is None or int(lvl) < 2: self.j.log("ERROR", f"options trading level is {lvl}: the account cannot buy calls or puts. Enable options on the Alpaca paper account (level 2) or set day.instrument back to stock")
+                else: self.j.log("INFO", f"options enabled: level {lvl}, options buying power ${a.get('options_bp', 0):,.0f}")
+            except Exception as e: self.j.log("WARN", f"could not read options level: {str(e)[:80]}")
 
     # ---- commands (the buttons) ----
     def run(self, cmd):
@@ -93,7 +99,7 @@ class Services:
         except Exception: clock = {"is_open": False}
         pos = self.exe._positions_with_sector()
         now = dt.datetime.now(); wd = now.weekday() < 5
-        s.update({"mode": "live" if self.cfg.live else "paper", "hold_mode": self.cfg.hold_mode, "books": self.report.books(), "schedule": self.schedule_view(), "thinking": self.j.get("thinking"), "halted": self.risk.halted, "halt_reason": self.j.get("halt_reason", ""),
+        s.update({"mode": "live" if self.cfg.live else "paper", "hold_mode": self.cfg.hold_mode, "instrument": self.cfg.day_instrument if "day" in self.cfg.books else "stock", "books": self.report.books(), "schedule": self.schedule_view(), "thinking": self.j.get("thinking"), "halted": self.risk.halted, "halt_reason": self.j.get("halt_reason", ""),
                   "market_open": bool(clock.get("is_open")), "workday": wd and 5 <= now.hour < 18, "aggression": self.cfg.aggression,
                   "positions": pos, "config": self.cfg.risk, "busy": self.busy, "brain": self.llm.status, "broker": self.b.name})
         return s
@@ -132,7 +138,7 @@ class Services:
         s = self.state(); th = self.theses()
         lines = [f"MODE {s['mode']}, hold_mode {s['hold_mode']}{' HALTED: ' + s['halt_reason'] if s['halted'] else ''}. Equity ${s['equity']:,.2f}, today {s['day_pnl']:+.2f}, since start {s['pnl']:+.2f}, edge vs SPY {s['edge_pts']:+.2f} pts, closed {s['closed_trades']}, hit rate {s['hit_rate'] or 0:.0f}%. Aggression {s['aggression']}. Brain {s['brain']}. Market {'open' if s['market_open'] else 'closed'}.",
                  "BOOKS: " + "; ".join(f"{k} cap ${v['cap']:,.0f} return {v['return_pct']:+.2f}% (edge {v['edge_pts']:+.2f} pts) open {v['open']} closed {v['closed']} hit {v['hit_rate'] if v['hit_rate'] is not None else '-'}" for k, v in s["books"].items()),
-                 "POSITIONS: " + ("; ".join(f"{p['symbol']} [{p.get('book','')}] {p['qty']:.0f} @ {p['entry']:.2f} now {p['price']:.2f} ({p['pl_pct']:+.1f}%) stop {p['stop'] or '-'} target +{p.get('target_pct') or '-'}%" for p in s["positions"]) or "none"),
+                 "POSITIONS: " + ("; ".join(f"{p.get('label') or p['symbol']} [{p.get('book','')}] {p['qty']:.0f} @ {p['entry']:.2f} now {p['price']:.2f} ({p['pl_pct']:+.1f}%) stop {p['stop'] or '-'} target +{p.get('target_pct') or '-'}%" for p in s["positions"]) or "none"),
                  "THESES TODAY: " + ("; ".join(f"{t['symbol']} conv {t['conviction']} {'IN' if t['acted'] else ('skip: ' + (t['reject_reason'] or 'pending'))}: {t['catalyst']}" for t in th) or "none"),
                  "IDEAS: " + self.ideas().replace("\n", " | "),
                  "RECENT LOG (ET): " + " | ".join(f"{self._et(r['ts'])} {r['level']} {r['msg']}" for r in self.j.logs(12))]

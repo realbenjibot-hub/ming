@@ -1,5 +1,12 @@
 """Alpaca wrapper. Same code paper or live; the keys and the mode decide. A FakeBroker exists for tests and for running without keys."""
-import os, datetime as dt
+import os, re, datetime as dt
+
+OCC = re.compile(r"^[A-Z]{1,6}\d{6}[CP]\d{8}$")   # an option contract symbol, e.g. NVO260930C00040000
+def is_option(sym): return bool(OCC.match(sym or ""))
+def contract_label(c):
+    """NVO 40C 09-30: what the page and the log show for a contract."""
+    try: return f"{c['underlying']} {float(c['strike']):g}{'C' if str(c['type']).lower().startswith('c') else 'P'} {str(c['expiry'])[5:]}"
+    except Exception: return c.get("symbol", "?")
 
 class FakeBroker:
     """In-memory broker for tests and for booting with no keys. Prices are static unless set."""
@@ -46,6 +53,13 @@ class FakeBroker:
     def movers(self, top=20): return {"gainers": [], "losers": []}
     def tradable(self, s): return {"tradable": True, "price": self._price(s)}
     def stats(self, syms): return {s: self.fake_stats.get(s, {}) for s in syms} if hasattr(self, "fake_stats") else {}
+    def option_pick(self, underlying, direction, o):
+        """Synthetic near-the-money contract a week out, priced at 3% of the underlying."""
+        px = self._price(underlying); typ = "call" if direction == "up" else "put"
+        exp = (dt.date.today() + dt.timedelta(days=int(o.get("dte_target", 7)))).isoformat()
+        strike = round(px); sym = f"{underlying}{exp[2:].replace('-', '')}{'C' if typ == 'call' else 'P'}{int(strike * 1000):08d}"
+        mid = self.prices.setdefault(sym, round(px * 0.03, 2))
+        return {"symbol": sym, "underlying": underlying, "type": typ, "strike": strike, "expiry": exp, "bid": round(mid * 0.97, 2), "ask": round(mid * 1.03, 2), "mid": mid, "delta": 0.45 if typ == "call" else -0.45, "oi": 500, "spread_pct": 6.0}, None
 
 
 class AlpacaBroker:
@@ -56,26 +70,88 @@ class AlpacaBroker:
         from alpaca.data.historical.news import NewsClient
         from alpaca.data.historical.screener import ScreenerClient
         self.paper = paper
+        from alpaca.data.historical.option import OptionHistoricalDataClient
         self.tc = TradingClient(key, secret, paper=paper)
         self.dc = StockHistoricalDataClient(key, secret)
+        self.oc = OptionHistoricalDataClient(key, secret)
         self.nc = NewsClient(key, secret)
         self.sc = ScreenerClient(key, secret)
     def account(self):
         a = self.tc.get_account()
-        return {"equity": float(a.equity), "cash": float(a.cash), "buying_power": float(a.buying_power), "status": str(a.status)}
+        return {"equity": float(a.equity), "cash": float(a.cash), "buying_power": float(a.buying_power), "status": str(a.status),
+                "options_level": getattr(a, "options_trading_level", None), "options_bp": float(getattr(a, "options_buying_power", 0) or 0)}
     def positions(self):
         out = []
         for p in self.tc.get_all_positions():
             out.append({"symbol": p.symbol, "qty": float(p.qty), "entry": float(p.avg_entry_price), "price": float(p.current_price),
-                        "pl": float(p.unrealized_pl), "pl_pct": float(p.unrealized_plpc) * 100})
+                        "pl": float(p.unrealized_pl), "pl_pct": float(p.unrealized_plpc) * 100, "asset_class": str(getattr(p, "asset_class", "") or "")})
         return out
     def price(self, s):
         return self.prices_for([s]).get(s)
     def prices_for(self, syms):
+        """Latest trade for stocks; quote midpoint for option contracts (option prints are sparse, the mid is the honest mark)."""
         from alpaca.data.requests import StockLatestTradeRequest
-        if not syms: return {}
-        r = self.dc.get_stock_latest_trade(StockLatestTradeRequest(symbol_or_symbols=list(syms)))
-        return {k: float(v.price) for k, v in r.items()}
+        syms = list(dict.fromkeys(s for s in syms if s)); out = {}
+        stocks = [s for s in syms if not is_option(s)]; opts = [s for s in syms if is_option(s)]
+        if stocks:
+            r = self.dc.get_stock_latest_trade(StockLatestTradeRequest(symbol_or_symbols=stocks))
+            out.update({k: float(v.price) for k, v in r.items()})
+        if opts: out.update(self.option_mids(opts))
+        return out
+    def option_mids(self, syms):
+        from alpaca.data.requests import OptionLatestQuoteRequest
+        try:
+            r = self.oc.get_option_latest_quote(OptionLatestQuoteRequest(symbol_or_symbols=list(syms)))
+            out = {}
+            for k, q in r.items():
+                b, a = float(q.bid_price or 0), float(q.ask_price or 0)
+                if a > 0: out[k] = round((b + a) / 2, 2) if b > 0 else a
+            return out
+        except Exception: return {}
+    def option_pick(self, underlying, direction, o):
+        """Pick one contract for a view on the underlying: calls for up, puts for down. Expiry closest to dte_target inside the window,
+        strike closest to delta_target (nearest the money when greeks are missing), open interest and spread filters. Returns (contract, reject_reason)."""
+        from alpaca.trading.requests import GetOptionContractsRequest
+        from alpaca.trading.enums import ContractType, AssetStatus
+        from alpaca.data.requests import OptionSnapshotRequest
+        typ = ContractType.CALL if direction == "up" else ContractType.PUT
+        today = dt.date.today(); lo = today + dt.timedelta(days=int(o.get("dte_min", 3))); hi = today + dt.timedelta(days=int(o.get("dte_max", 14)))
+        px = self.price(underlying)
+        if not px: return None, "no underlying price"
+        try:
+            r = self.tc.get_option_contracts(GetOptionContractsRequest(underlying_symbols=[underlying], status=AssetStatus.ACTIVE, type=typ,
+                    expiration_date_gte=lo, expiration_date_lte=hi, strike_price_gte=str(round(px * 0.85, 2)), strike_price_lte=str(round(px * 1.15, 2)), limit=300))
+            cs = list(r.option_contracts or [])
+        except Exception as e: return None, f"chain failed: {str(e)[:80]}"
+        if not cs: return None, "no contracts in the expiry window"
+        target = today + dt.timedelta(days=int(o.get("dte_target", 7)))
+        best_exp = min({c.expiration_date for c in cs}, key=lambda d: abs((d - target).days))
+        cs = [c for c in cs if c.expiration_date == best_exp and (c.open_interest is None or float(c.open_interest) >= float(o.get("min_open_interest", 100)))]
+        if not cs: return None, f"open interest below {o.get('min_open_interest', 100)}"
+        syms = [c.symbol for c in cs]
+        try: snaps = self.oc.get_option_snapshot(OptionSnapshotRequest(symbol_or_symbols=syms))
+        except Exception as e: snaps = {}
+        cands = []
+        for c in cs:
+            sn = snaps.get(c.symbol); q = getattr(sn, "latest_quote", None) if sn else None
+            b, a = (float(q.bid_price or 0), float(q.ask_price or 0)) if q else (0.0, 0.0)
+            if a <= 0: continue
+            mid = (b + a) / 2 if b > 0 else a
+            delta = None
+            g = getattr(sn, "greeks", None) if sn else None
+            if g is not None and getattr(g, "delta", None) is not None: delta = abs(float(g.delta))
+            spread = (a - b) / mid * 100 if (mid > 0 and b > 0) else 100.0
+            cands.append({"symbol": c.symbol, "underlying": underlying, "type": "call" if typ == ContractType.CALL else "put", "strike": float(c.strike_price), "expiry": best_exp.isoformat(),
+                          "bid": b, "ask": a, "mid": round(mid, 2), "delta": delta, "oi": float(c.open_interest or 0), "spread_pct": round(spread, 1)})
+        if not cands: return None, "no quotes on the chain"
+        dt_ = float(o.get("delta_target", 0.45))
+        cands.sort(key=lambda c: abs(c["delta"] - dt_) if c["delta"] is not None else abs(c["strike"] - px) / px)
+        for c in cands:
+            if c["spread_pct"] > float(o.get("max_spread_pct", 10)): continue
+            if c["mid"] < float(o.get("min_premium", 0.30)): continue
+            return c, None
+        c = cands[0]
+        return None, f"best contract {contract_label(c)} rejected: spread {c['spread_pct']}%, premium {c['mid']:.2f}"
     def market_buy(self, s, qty):
         from alpaca.trading.requests import MarketOrderRequest
         from alpaca.trading.enums import OrderSide, TimeInForce
