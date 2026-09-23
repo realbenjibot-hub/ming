@@ -48,6 +48,8 @@ def reports():
 def report(day: str): return PlainTextResponse(svc.j.get(f"report:{day}", "no report"))
 @app.get("/api/history", dependencies=[Depends(auth)])
 def history(n: int = Query(30, le=200)): return svc.report.history(n)
+@app.get("/api/lessons", dependencies=[Depends(auth)])
+def lessons(): return PlainTextResponse(svc.lessons() or "no lessons yet")
 @app.get("/api/ideas", dependencies=[Depends(auth)])
 def ideas(): return PlainTextResponse(svc.ideas())
 @app.get("/api/aggression/presets", dependencies=[Depends(auth)])
@@ -108,7 +110,7 @@ TZ = ZoneInfo(svc.cfg.tz)
 def _cron(hhmm):
     h, m = hhmm.split(":"); return CronTrigger(day_of_week="mon-fri", hour=int(h), minute=int(m), timezone=TZ)   # explicit: without it the trigger takes the container clock, which is UTC
 SC, DAY = svc.cfg.schedule, svc.cfg.day
-for cmd in ("research", "refresh", "execute", "report"):
+for cmd in ("research", "refresh", "execute", "report", "reflect"):
     sched.add_job(_job(cmd), _cron(SC[cmd]), id=cmd, misfire_grace_time=600)
 sched.add_job(_job("review"), _cron(SC["review"]), id="review", misfire_grace_time=600)   # every mode: in day mode it manages anything left from swing
 sched.add_job(_job("flatten", only_mode="day"), _cron(SC.get("flatten", "15:55")), id="flatten", misfire_grace_time=240)

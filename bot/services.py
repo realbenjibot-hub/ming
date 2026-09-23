@@ -30,7 +30,7 @@ class Services:
     def run(self, cmd):
         fn = {"research": self.do_research, "refresh": self.do_refresh, "execute": self.do_execute, "review": self.do_review,
               "report": self.do_report, "kill": self.do_kill, "resume": self.do_resume, "morning": self.do_morning,
-              "scan": self.do_scan, "hunt": self.do_hunt, "flatten": self.do_flatten, "flatten_all": self.do_flatten_all, "sweep": self.do_sweep}.get(cmd)
+              "scan": self.do_scan, "hunt": self.do_hunt, "flatten": self.do_flatten, "flatten_all": self.do_flatten_all, "sweep": self.do_sweep, "reflect": self.do_reflect}.get(cmd)
         if not fn: raise ValueError(f"unknown command {cmd}")
         if not self._lock.acquire(blocking=False): raise RuntimeError(f"busy: {self.busy}")
         try:
@@ -87,6 +87,8 @@ class Services:
     def do_flatten_all(self): return {"closed": self.exe.flatten(None)}
     def do_sweep(self): return {"closed": self.exe.flatten("day", stale_only=True)}
     def do_report(self): return {"report": self.report.text()}
+    def do_reflect(self): return {"lessons": self.report.reflect()}
+    def lessons(self): return ideasmod.lessons()
     def do_kill(self): self.risk.halt("operator kill switch"); return {"ok": True}
     def do_resume(self): self.risk.reset_baselines(); return {"ok": True}
     def do_morning(self):
@@ -118,6 +120,7 @@ class Services:
         if self.cfg.hold_mode != "day" or self.j.open_trades("swing"): rows += [(sc["review"], "review")]
         if "day" in self.cfg.books: rows += [(sc.get("flatten", "15:55"), "flatten")]
         rows += [(sc["report"], "report")]
+        if sc.get("reflect"): rows.append((sc["reflect"], "reflect"))
         rows.sort(key=lambda r: m(r[0]))
         return [{"m": m(t), "time": t.lstrip("0"), "label": l} for t, l in rows]
     def set_hold_mode(self, mode):
@@ -141,5 +144,6 @@ class Services:
                  "POSITIONS: " + ("; ".join(f"{p.get('label') or p['symbol']} [{p.get('book','')}] {p['qty']:.0f} @ {p['entry']:.2f} now {p['price']:.2f} ({p['pl_pct']:+.1f}%) stop {p['stop'] or '-'} target +{p.get('target_pct') or '-'}%" for p in s["positions"]) or "none"),
                  "THESES TODAY: " + ("; ".join(f"{t['symbol']} conv {t['conviction']} {'IN' if t['acted'] else ('skip: ' + (t['reject_reason'] or 'pending'))}: {t['catalyst']}" for t in th) or "none"),
                  "IDEAS: " + self.ideas().replace("\n", " | "),
+                 "LESSONS: " + (ideasmod.lessons(8).replace("\n", " | ") or "none yet"),
                  "RECENT LOG (ET): " + " | ".join(f"{self._et(r['ts'])} {r['level']} {r['msg']}" for r in self.j.logs(12))]
         return "\n".join(lines)
