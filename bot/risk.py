@@ -6,7 +6,17 @@ class Risk:
         self.cfg = cfg; self.b = broker; self.j = journal
 
     # ---- baselines and halt ----
+    def _clear_stale_daily_halt(self):
+        """A DAILY cap halt belongs to the day it happened. On the next trading day it clears itself; TOTAL halts and the kill switch wait for resume."""
+        if not self.halted: return
+        reason = str(self.j.get("halt_reason", "")); today = dt.date.today().isoformat()
+        if reason.startswith("DAILY") and (self.j.get("halt_date") or "") < today:
+            acct = self.b.account()
+            self.j.set("halted", False); self.j.set("halt_reason", ""); self.j.set("day_start_date", today); self.j.set("day_start_equity", acct["equity"])
+            self.j.log("INFO", "new day: yesterday's daily loss halt cleared; trading resumes under the same caps")
+
     def ensure_baselines(self):
+        self._clear_stale_daily_halt()
         acct = self.b.account()
         if self.j.get("baseline_equity") is None:
             self.j.set("baseline_equity", acct["equity"]); self.j.set("baseline_ts", self.j.now())
@@ -33,7 +43,7 @@ class Risk:
     def halted(self):
         return bool(self.j.get("halted", False))
     def halt(self, reason):
-        self.j.set("halted", True); self.j.set("halt_reason", reason)
+        self.j.set("halted", True); self.j.set("halt_reason", reason); self.j.set("halt_date", dt.date.today().isoformat())
         try: self.b.close_all()
         except Exception as e: self.j.log("ERROR", f"close_all failed: {e}")
         for t in self.j.open_trades():
@@ -46,13 +56,8 @@ class Risk:
     def check_caps(self):
         """Called at the start of every run. Halts if a cap is breached. Returns True if trading may continue.
         A DAILY cap halt clears itself on the next trading day; a TOTAL cap halt and the kill switch wait for the operator."""
-        if self.halted:
-            reason = str(self.j.get("halt_reason", ""))
-            if reason.startswith("DAILY") and self.j.get("day_start_date") != dt.date.today().isoformat():
-                acct = self.b.account()
-                self.j.set("halted", False); self.j.set("halt_reason", ""); self.j.set("day_start_date", dt.date.today().isoformat()); self.j.set("day_start_equity", acct["equity"])
-                self.j.log("INFO", "new day: yesterday's daily loss halt cleared; trading resumes under the same caps")
-            else: return False
+        self._clear_stale_daily_halt()
+        if self.halted: return False
         acct = self.ensure_baselines()
         cap = self.cfg.get("capital_cap")
         day_pl = acct["equity"] - (self.j.get("day_start_equity") or acct["equity"])
