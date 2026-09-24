@@ -53,6 +53,7 @@ class FakeBroker:
     def movers(self, top=20): return {"gainers": [], "losers": []}
     def tradable(self, s): return {"tradable": True, "price": self._price(s)}
     def stats(self, syms): return {s: self.fake_stats.get(s, {}) for s in syms} if hasattr(self, "fake_stats") else {}
+    def intraday(self, sym): return getattr(self, "fake_intraday", {}).get(sym, {})
     def option_pick(self, underlying, direction, o):
         """Synthetic near-the-money contract a week out, priced at 3% of the underlying."""
         px = self._price(underlying); typ = "call" if direction == "up" else "put"
@@ -107,6 +108,20 @@ class AlpacaBroker:
                 b, a = float(q.bid_price or 0), float(q.ask_price or 0)
                 if a > 0: out[k] = round((b + a) / 2, 2) if b > 0 else a
             return out
+        except Exception: return {}
+    def intraday(self, sym):
+        """Today's tape for one name from 5 minute bars: session VWAP, last, volume so far, bar count. Empty dict when there are no bars yet."""
+        from alpaca.data.requests import StockBarsRequest
+        from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+        from zoneinfo import ZoneInfo
+        try:
+            et = ZoneInfo("America/New_York"); now = dt.datetime.now(et)
+            start = now.replace(hour=9, minute=30, second=0, microsecond=0)
+            bars = self.dc.get_stock_bars(StockBarsRequest(symbol_or_symbols=[sym], timeframe=TimeFrame(5, TimeFrameUnit.Minute), start=start))
+            bs = list((bars.data if hasattr(bars, "data") else dict(bars)).get(sym) or [])
+            if not bs: return {}
+            v = sum(float(b.volume) for b in bs); pv = sum(float(b.vwap or b.close) * float(b.volume) for b in bs)
+            return {"vwap": round(pv / v, 4) if v else None, "last": float(bs[-1].close), "vol": v, "bars": len(bs), "open": float(bs[0].open)}
         except Exception: return {}
     def option_pick(self, underlying, direction, o):
         """Pick one contract for a view on the underlying: calls for up, puts for down. Expiry closest to dte_target inside the window,

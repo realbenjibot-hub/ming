@@ -23,6 +23,14 @@ day:                       # the day book
   first_hunt: "10:00"      # first intraday hunt, ET (9:35 execute already took the morning theses)
   last_entry: "15:00"      # no new entries after this, ET
   no_entry_windows: [["11:30", "13:30"]]   # the midday lull: no entries, and hunts skip
+  thesis_max_age_min: 90   # a day thesis older than this is stale and is skipped, never bought late
+  max_trades_per_day: 3    # entries per day in the day book; the edge is in the best two or three, not the spray
+  confirm:                 # tape confirmation at entry; every rule must pass or the thesis is skipped with the reason
+    enabled: false         # OFF until the end-of-week rework: it depends on live bar data that has not been exercised yet
+    min_rel_vol: 1.2       # today's volume pace against the 20 day average
+    vwap: true             # calls need the stock above VWAP, puts below
+    max_extension_atr: 1.5 # skip if the stock has already moved more than this many average daily ranges today in the thesis direction
+  no_macro_etfs: [SPY, QQQ, IWM, DIA, USO, GLD, SLV, TLT, XLE, XLF, XLK, XLV, ARKK, SQQQ, TQQQ, UVXY, VXX]   # not catalysts; skipped unless the operator directs one
   stop_loss_pct: 1.5       # fallback exits when the stock has no volatility data
   take_profit_pct: 3
   trail_trigger_pct: 1.5
@@ -44,6 +52,8 @@ options:                   # the day book when instrument is options. Everything
   min_premium: 0.30        # per share; cheaper contracts are lottery tickets
   max_position_pct: 4      # of the cap in premium per trade. With the 35% stop that risks about 1.4% of the cap per trade, so three losers fit inside the daily cap. 09-23: was 10, and one stop equalled the whole daily cap.
   stop_pct: 35             # engine stop on the premium
+  underlying_stop: false   # OFF until the rework: when on, the working stop moves to the stock (stop_atr_mult) and stop_pct becomes the catastrophe backstop
+  stop_atr_mult: 0.5
   target_pct: 80
   trail_trigger_pct: 30
   trail_pct: 20
