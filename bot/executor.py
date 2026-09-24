@@ -46,8 +46,13 @@ class Executor:
             if not ok: self.j.log("SKIP", f"{book} book: no entries, {why}"); continue
             positions = self._positions_with_sector(book)
             for t in mine:
+                if book == "day":
+                    direction = "down" if str(t.get("direction", "up")).lower().startswith("d") else "up"
+                    tape = self.b.intraday(t["symbol"]) if (self.cfg.day.get("confirm") or {}).get("enabled") else {}
+                    why = self.r.day_gates(t, stats.get(t["symbol"]), tape, direction)
+                    if why: self.j.mark_thesis(t["id"], reject_reason=why); self.j.log("SKIP", f"{t['symbol']} (day): {why}"); continue
                 if book == "day" and self.cfg.day_instrument == "options":
-                    if self._enter_option(t, positions, done): pass
+                    if self._enter_option(t, positions, done, stats.get(t["symbol"])): pass
                     continue
                 held = [x.get("underlying") or x["symbol"] for x in self.j.open_trades()]
                 qty, stop, why, ex = self.r.size(t, positions, prices, book=book, all_symbols=held, stat=stats.get(t["symbol"]))
@@ -70,7 +75,7 @@ class Executor:
         self._mark_equity()
         return done
 
-    def _enter_option(self, t, positions, done):
+    def _enter_option(self, t, positions, done, stat=None):
         """Options day book: pick a contract for the thesis direction, size in premium, buy, journal with the engine stop. No broker stop: the scan is the stop."""
         direction = "down" if str(t.get("direction", "up")).lower().startswith("d") else "up"
         px = None
@@ -86,10 +91,12 @@ class Executor:
             o = self.b.market_buy(c["symbol"], qty)
             fill = o.get("filled_avg_price") or c["ask"]
             stop = round(fill * (1 - ex["stop_pct"] / 100), 2)
+            c["u_entry"] = px; c["u_stop"] = self.r.underlying_stop(c, px, stat)
             self.j.open_trade(c["symbol"], qty, fill, stop, t["id"], o.get("id"), None, book="day", exits=ex, contract=c)
             self.j.mark_thesis(t["id"], acted=1)
             positions.append({"symbol": c["symbol"], "qty": qty, "price": fill, "sector": t.get("sector"), "underlying": t["symbol"]})
-            self.j.log("TRADE", f"BUY {qty} {contract_label(c)} @ {fill:.2f} (${fill*qty*100:,.0f}) [day options] stop {stop:.2f} (-{ex['stop_pct']:.0f}%) target +{ex['target_pct']:.0f}% (conv {t['conviction']}, delta {c['delta'] if c['delta'] is not None else '?'}, spread {c['spread_pct']}%)")
+            ust = f", stock stop {c['u_stop']:.2f}" if c.get("u_stop") else ""
+            self.j.log("TRADE", f"BUY {qty} {contract_label(c)} @ {fill:.2f} (${fill*qty*100:,.0f}) [day options] premium stop {stop:.2f} (-{ex['stop_pct']:.0f}%){ust} target +{ex['target_pct']:.0f}% (conv {t['conviction']}, delta {c['delta'] if c['delta'] is not None else '?'}, spread {c['spread_pct']}%)")
             done.append({"symbol": contract_label(c), "qty": qty, "fill": fill, "stop": stop, "book": "day", "target_pct": ex["target_pct"]})
             return True
         except Exception as e:
@@ -154,10 +161,14 @@ class Executor:
         if not trades:
             if not quiet: self.j.log("REVIEW", "nothing open")
             self._mark_equity(); return
-        prices = self.b.prices_for([t["symbol"] for t in trades])
+        prices = self.b.prices_for([t["symbol"] for t in trades] + [t["underlying"] for t in trades if t.get("u_stop")])
         held = {p["symbol"] for p in self.b.positions()}
         for t in trades:
             sym = t["symbol"]
+            if t.get("u_stop") and prices.get(t.get("underlying")):
+                u = prices[t["underlying"]]; call = str(t.get("opt_type")).startswith("c")
+                if (call and u <= t["u_stop"]) or (not call and u >= t["u_stop"]):
+                    self.j.log("REVIEW", f"{self._name(t)}: {t['underlying']} at {u:.2f} through the stock stop {t['u_stop']:.2f}"); self._exit(t, "stop", prices.get(sym)); continue
             if sym not in held:   # the stop fired at the broker; close the journal side
                 px = prices.get(sym) or t["stop"] or t["entry"]
                 self.j.close_trade(t["id"], t["stop"] or px, "stop"); self.j.log("EXIT", f"{sym} stopped out near {t['stop']:.2f}"); continue

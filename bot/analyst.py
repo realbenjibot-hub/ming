@@ -30,7 +30,8 @@ class Analyst:
         if intraday or self.cfg.hold_mode == "day":
             sys += (f"\n\nDAY MODE. Every position is sold at {self.cfg.schedule.get('flatten', '15:55')} ET today, no exceptions. A thesis only counts if the catalyst can move the stock within hours, today. "
                     "Yesterday's news that already gapped at the open is priced in. Prefer fresh catalysts with volume behind them: an earnings beat still running, guidance, an FDA decision, a contract, an upgrade this morning, a sector move with a clear driver. "
-                    "Avoid names that already ran more than 15% today unless the catalyst is still unfolding, thin names, and anything without a source in the pack. Fewer, cleaner theses beat a long list.")
+                    "Avoid names that already ran more than 15% today unless the catalyst is still unfolding, thin names, and anything without a source in the pack. Fewer, cleaner theses beat a long list. "
+                    "The engine skips a thesis older than 90 minutes, skips broad ETFs like QQQ, USO, SLV, GLD because they are not catalysts, and takes at most three entries a day. Write theses that can pass those gates: fresh, single-name, few.")
         user = pack
         if refresh and existing:
             user += "\n\nYOUR 6:00 THESES (revise conviction, drop what is priced in, add only if something new and real happened):\n" + json.dumps(existing)[:6000]

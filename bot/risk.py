@@ -83,6 +83,33 @@ class Risk:
             if a <= hhmm < z: return False, f"midday pause {a}-{z} ET"
         return True, None
 
+    def day_gates(self, thesis, stat, tape, direction="up"):
+        """Day-book entry gates, in order: stale thesis, macro ETF, daily trade count, tape confirmation. Returns a reject reason or None."""
+        d = self.cfg.day; sym = thesis["symbol"]
+        try:
+            age = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(thesis["ts"])).total_seconds() / 60 if thesis.get("ts") else 0
+            if age > float(d.get("thesis_max_age_min", 90)): return f"stale thesis ({age:.0f} min old)"
+        except Exception: pass
+        if sym in set(d.get("no_macro_etfs", []) or []) and not thesis.get("operator_directed"): return "macro ETF, not a catalyst"
+        today = dt.date.today().isoformat()
+        n = len(self.j.trades_entered_on(today, "day"))
+        if n >= int(d.get("max_trades_per_day", 3)): return f"daily trade limit ({n}/{d.get('max_trades_per_day', 3)})"
+        c = d.get("confirm") or {}
+        if not c or not c.get("enabled"): return None
+        stat = stat or {}; tape = tape or {}
+        if tape.get("bars", 0) < 2: return None   # no bars means no data, never a block
+        rv = stat.get("rel_vol")
+        if rv is not None and rv < float(c.get("min_rel_vol", 1.2)): return f"no volume (relvol {rv:.1f}x)"
+        last, vwap = tape.get("last"), tape.get("vwap")
+        if c.get("vwap", True) and last and vwap:
+            if direction == "up" and last < vwap: return f"below VWAP ({last:.2f} < {vwap:.2f})"
+            if direction == "down" and last > vwap: return f"above VWAP ({last:.2f} > {vwap:.2f})"
+        atr, gap = stat.get("atr_pct"), stat.get("gap_pct")
+        if atr and gap is not None:
+            moved = gap if direction == "up" else -gap
+            if moved > atr * float(c.get("max_extension_atr", 1.5)): return f"extended ({gap:+.1f}% today, {moved / atr:.1f} ATR)"
+        return None
+
     def exits_for(self, book, stat):
         """Stop, target, and trail for one entry, as percents. Scaled to the stock's average daily range when we have it, clamped; the book's fixed numbers otherwise."""
         r = self.cfg.risk_for(book); v = r["vol"]; atr = (stat or {}).get("atr_pct")
@@ -134,6 +161,13 @@ class Risk:
         ex = {"stop_pct": float(o["stop_pct"]), "target_pct": float(o["target_pct"]), "trail_trigger_pct": float(o["trail_trigger_pct"]), "trail_pct": float(o["trail_pct"]), "atr_pct": None}
         stop = round(ask * (1 - ex["stop_pct"] / 100), 2)
         return qty, stop, None, ex
+
+    def underlying_stop(self, contract, u_price, stat):
+        """The working stop for a contract: the underlying moving stop_atr_mult average ranges against the thesis. None without ATR."""
+        atr = (stat or {}).get("atr_pct"); m = float(self.cfg.options.get("stop_atr_mult", 0.5))
+        if not self.cfg.options.get("underlying_stop") or not (atr and u_price): return None
+        d = u_price * atr * m / 100
+        return round(u_price - d, 2) if str(contract["type"]).startswith("c") else round(u_price + d, 2)
 
     # ---- exits ----
     def exit_rules(self, trade, price):

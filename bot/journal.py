@@ -21,7 +21,8 @@ class Journal:
         self.db.commit()
         for tbl, col, typ in [("trades", "book", "TEXT DEFAULT 'swing'"), ("trades", "target_pct", "REAL"), ("trades", "trail_trigger_pct", "REAL"), ("trades", "trail_pct", "REAL"), ("trades", "stop_pct", "REAL"),
                               ("theses", "book", "TEXT"), ("theses", "direction", "TEXT"),
-                              ("trades", "underlying", "TEXT"), ("trades", "opt_type", "TEXT"), ("trades", "strike", "REAL"), ("trades", "expiry", "TEXT")]:
+                              ("trades", "underlying", "TEXT"), ("trades", "opt_type", "TEXT"), ("trades", "strike", "REAL"), ("trades", "expiry", "TEXT"),
+                              ("trades", "u_entry", "REAL"), ("trades", "u_stop", "REAL")]:
             if col not in [r[1] for r in self.db.execute(f"PRAGMA table_info({tbl})").fetchall()]:
                 self.db.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typ}"); self.db.commit()
 
@@ -72,10 +73,13 @@ class Journal:
     # trades
     def open_trade(self, symbol, qty, entry, stop, thesis_id, order_id, stop_order_id, book="swing", exits=None, contract=None):
         e = exits or {}; c = contract or {}
-        cur = self._x("INSERT INTO trades(symbol,side,qty,entry,entry_ts,stop,thesis_id,order_id,stop_order_id,book,stop_pct,target_pct,trail_trigger_pct,trail_pct,underlying,opt_type,strike,expiry) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        cur = self._x("INSERT INTO trades(symbol,side,qty,entry,entry_ts,stop,thesis_id,order_id,stop_order_id,book,stop_pct,target_pct,trail_trigger_pct,trail_pct,underlying,opt_type,strike,expiry,u_entry,u_stop) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                       symbol, "long", qty, entry, self.now(), stop, thesis_id, order_id, stop_order_id, book, e.get("stop_pct"), e.get("target_pct"), e.get("trail_trigger_pct"), e.get("trail_pct"),
-                      c.get("underlying"), c.get("type"), c.get("strike"), c.get("expiry"))
+                      c.get("underlying"), c.get("type"), c.get("strike"), c.get("expiry"), c.get("u_entry"), c.get("u_stop"))
         return cur.lastrowid
+    def trades_entered_on(self, day, book=None):
+        if book: return self._q("SELECT * FROM trades WHERE substr(entry_ts,1,10)=? AND book=?", day, book)
+        return self._q("SELECT * FROM trades WHERE substr(entry_ts,1,10)=?", day)
     def open_trades(self, book=None):
         if book: return self._q("SELECT * FROM trades WHERE status='open' AND book=? ORDER BY id", book)
         return self._q("SELECT * FROM trades WHERE status='open' ORDER BY id")
