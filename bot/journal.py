@@ -77,6 +77,11 @@ class Journal:
                       symbol, "long", qty, entry, self.now(), stop, thesis_id, order_id, stop_order_id, book, e.get("stop_pct"), e.get("target_pct"), e.get("trail_trigger_pct"), e.get("trail_pct"),
                       c.get("underlying"), c.get("type"), c.get("strike"), c.get("expiry"), c.get("u_entry"), c.get("u_stop"))
         return cur.lastrowid
+    def trade_for_thesis(self, tid):
+        r = self._q("SELECT * FROM trades WHERE thesis_id=? ORDER BY id DESC LIMIT 1", tid)
+        return r[0] if r else None
+    def trades_closed_on(self, day):
+        return self._q("SELECT * FROM trades WHERE status='closed' AND substr(exit_ts,1,10)=? ORDER BY exit_ts", day)
     def trades_entered_on(self, day, book=None):
         if book: return self._q("SELECT * FROM trades WHERE substr(entry_ts,1,10)=? AND book=?", day, book)
         return self._q("SELECT * FROM trades WHERE substr(entry_ts,1,10)=?", day)
