@@ -124,7 +124,13 @@ button.go{color:#0b0b0b;background:var(--warm);border-color:var(--warm);font-wei
 /* positions: name and P&L, detail on click */
 #positions{left:var(--gx);top:50%;width:var(--gw);max-height:20%;overflow:auto;scrollbar-width:none}
 #history{left:var(--gx);top:71%;width:var(--gw);max-height:15%;overflow:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to bottom,#000 80%,transparent);mask-image:linear-gradient(to bottom,#000 80%,transparent);padding-bottom:1em}
-.hd{display:flex;justify-content:space-between;align-items:baseline;padding:.22em 0;font-size:.9em;border-top:1px solid var(--rule)}
+.hd{padding:.22em 0;font-size:.9em;border-top:1px solid var(--rule);cursor:pointer}
+.hd .line{display:flex;justify-content:space-between;align-items:baseline}
+.hd .more{max-height:0;overflow:hidden;opacity:0;transition:max-height .3s,opacity .3s;padding-left:.2em}
+.hd.open .more{max-height:12em;opacity:1;padding-top:.2em}
+.ht{display:flex;justify-content:space-between;font-size:.9em;color:var(--dim);padding:.1em 0}
+.ht small{color:var(--dim2);margin-left:.4em}
+#history{max-height:22%}
 .hd:first-child{border-top:0}
 .hd .d{color:var(--dim)}
 .hd .d small{color:var(--dim2);margin-left:.5em}
@@ -604,7 +610,9 @@ async function load(){
     for(const q of s.positions){pl.insertAdjacentHTML('beforeend',`<div class="pos" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${q.label||q.symbol}</span><span class="pl mono ${cls(q.pl)}">${sign(q.pl_pct)}%<small>${sign(q.pl)}</small></span></div><div class="more"><span class="mono">${q.book||''}${q.book?' · ':''}${fmt(q.qty,0)} @ ${fmt(q.entry)} · stop ${q.stop?fmt(q.stop):'-'}${q.target_pct?' · target +'+q.target_pct+'%':''}</span><br>${q.thesis?q.thesis.catalyst:''}</div></div>`)}
     try{const hs=await api('/api/history?n=20');const hl=$('#histList');hl.innerHTML='';
       if(!hs.length)hl.innerHTML='<div class="cat">No days on the record yet.</div>';
-      for(const h of hs){const wk=new Date(h.day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short'});hl.insertAdjacentHTML('beforeend',`<div class="hd"><span class="d mono">${h.day.slice(5)}<small>${wk}${h.source==='live'?' · live':''}</small></span><span class="v mono ${h.pnl?cls(h.pnl):''}">${sign(h.pnl)}<small>${sign(h.pct)}%</small></span></div>`)}
+      for(const h of hs){const wk=new Date(h.day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short'});
+        const trs=(h.trades||[]).map(t=>`<div class="ht"><span class="mono">${t.label}</span><span class="mono ${t.pl?cls(t.pl):''}">${t.status==='closed'?sign(t.pl)+' <small>'+t.exit_reason+' · '+t.held_min+'m</small>':'open'}</span></div>`).join('');
+        hl.insertAdjacentHTML('beforeend',`<div class="hd${trs?' has':''}" onclick="this.classList.toggle('open')"><div class="line"><span class="d mono">${h.day.slice(5)}<small>${wk}${h.source==='live'?' · live':''}${h.closed?' · '+h.closed+' trade'+(h.closed>1?'s':''):''}</small></span><span class="v mono ${h.pnl?cls(h.pnl):''}">${sign(h.pnl)}<small>${sign(h.pct)}%</small></span></div><div class="more">${trs||'<span class="cat">no trades</span>'}</div></div>`)}
     }catch(e){}
     if(!PRESETS)PRESETS=await api('/api/aggression/presets');
     if(document.activeElement!==$('#dialRange')){$('#dialRange').value=s.aggression;previewDial(s.aggression)}
@@ -613,7 +621,10 @@ async function load(){
     if(s.thinking&&s.thinking.text){$('#thinkText').textContent=s.thinking.text;$('#thinkText').className='';$('#thinkWhen').textContent=et(s.thinking.ts)+(s.thinking.pass?' · '+s.thinking.pass:'')}
     const th=await api('/api/theses'); const tl=$('#thList'); tl.innerHTML=''; $('#thN').textContent=th.length||'';
     if(!th.length)tl.innerHTML='<div class="cat">Nothing yet. Research runs at 6:00 AM ET.</div>';
-    for(const t of th)tl.insertAdjacentHTML('beforeend',`<div class="th ${t.acted?'in':''}" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${t.symbol}${t.book?'<small style="font-weight:400;opacity:.55;margin-left:.5em;font-size:.7em">'+t.book+'</small>':''}</span><div class="conv" title="conviction ${t.conviction}/10"><i style="width:${t.conviction*10}%"></i></div><span class="tag">${t.acted?'in':(t.reject_reason?'skip':'pending')}</span></div><div class="more"><span class="sector">${t.sector||''}${t.sector?' · ':''}conviction ${t.conviction}/10</span><br>${t.catalyst}${!t.acted&&t.reject_reason?`<br><span class="sector">${t.reject_reason}</span>`:''}</div></div>`);
+    for(const t of th){const tr=t.trade;const done=tr&&tr.status==='closed';
+      const tag=done?`<span class="tag mono ${tr.pl?cls(tr.pl):''}">${sign(tr.pl)}</span>`:`<span class="tag">${t.acted?'in':(t.reject_reason?'skip':'pending')}</span>`;
+      const trLine=tr?`<br><span class="sector mono">${tr.label} · ${fmt(tr.qty,0)} @ ${fmt(tr.entry)}${done?' → '+fmt(tr.exit)+' ('+tr.exit_reason+', '+tr.held_min+' min, '+sign(tr.pl_pct)+'%)':' · open '+tr.held_min+' min'}</span>`:'';
+      tl.insertAdjacentHTML('beforeend',`<div class="th ${t.acted&&!done?'in':''}" onclick="this.classList.toggle('open')"><div class="line"><span class="sym">${t.symbol}${t.book?'<small style="font-weight:400;opacity:.55;margin-left:.5em;font-size:.7em">'+t.book+'</small>':''}</span><div class="conv" title="conviction ${t.conviction}/10"><i style="width:${t.conviction*10}%"></i></div>${tag}</div><div class="more"><span class="sector">${t.sector||''}${t.sector?' · ':''}conviction ${t.conviction}/10</span><br>${t.catalyst}${!t.acted&&t.reject_reason?`<br><span class="sector">${t.reject_reason}</span>`:''}${trLine}</div></div>`)}
     const lg=await api('/api/log?n=14'); const le=$('#log'); le.innerHTML='<h4>Activity</h4>';
     for(const r of lg)le.insertAdjacentHTML('beforeend',`<div><span class="mono" style="color:var(--dim)">${et(r.ts)}</span> <span class="lv ${r.level}">${r.level}</span>${r.msg}</div>`);
   }catch(e){toast('Load failed: '+e.message)}

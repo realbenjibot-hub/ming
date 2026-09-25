@@ -20,6 +20,20 @@ class Report:
                 "edge_pts": bot_ret - spy_ret, "closed_trades": len(closed), "hit_rate": (len(wins) / len(closed) * 100) if closed else None,
                 "realized": sum(t["pl"] or 0 for t in closed), "capital_cap": cap}
 
+    @staticmethod
+    def trade_view(t):
+        """One trade for the page: label, status, P&L, exit reason, hold time, entry and exit prices."""
+        from .broker import contract_label
+        label = contract_label({"underlying": t["underlying"], "strike": t["strike"], "type": t["opt_type"], "expiry": t["expiry"]}) if t.get("opt_type") else t["symbol"]
+        held = None
+        try:
+            a = dt.datetime.fromisoformat(t["entry_ts"]); b = dt.datetime.fromisoformat(t["exit_ts"]) if t.get("exit_ts") else dt.datetime.now(dt.timezone.utc)
+            held = int((b - a).total_seconds() // 60)
+        except Exception: pass
+        return {"label": label, "status": t["status"], "pl": round(t["pl"], 2) if t.get("pl") is not None else None, "exit_reason": t.get("exit_reason"),
+                "entry": t["entry"], "exit": t.get("exit"), "qty": t["qty"], "held_min": held, "book": t.get("book"),
+                "pl_pct": round((t["exit"] / t["entry"] - 1) * 100, 2) if (t.get("exit") and t.get("entry")) else None}
+
     def _since_baseline(self, trades):
         """Only trades closed after the current baseline count on the scorecard. Resume resets the baseline, so it also resets the record."""
         b0 = self.j.get("baseline_ts") or ""
@@ -62,6 +76,9 @@ class Report:
         s = self.state()
         rows[today] = {"day": today, "pnl": round(s["day_pnl"], 2), "pct": round(s["day_pnl"] / cap * 100, 3), "closed": sum(1 for t in self.j.closed_trades(200) if (t["exit_ts"] or "")[:10] == today), "source": "live"}
         out = sorted(rows.values(), key=lambda r: r["day"], reverse=True)[:n]
+        for r in out:
+            r["trades"] = [self.trade_view(t) for t in self.j.trades_closed_on(r["day"])]
+            if r["day"] == today: r["trades"] += [self.trade_view(t) for t in self.j.open_trades()]
         return out
 
     def text(self):

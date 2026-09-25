@@ -106,7 +106,11 @@ class Services:
                   "positions": pos, "config": self.cfg.risk, "busy": self.busy, "brain": self.llm.status, "broker": self.b.name})
         return s
     def theses(self, day=None):
-        return self.j.theses_for(day or dt.date.today().isoformat())
+        out = self.j.theses_for(day or dt.date.today().isoformat())
+        for t in out:
+            tr = self.j.trade_for_thesis(t["id"]) if t.get("acted") else None
+            t["trade"] = self.report.trade_view(tr) if tr else None
+        return out
     def set_config(self, key, value):
         self.cfg.set(key, value); self.j.log("CONFIG", f"{key} = {value}"); return self.cfg.risk
     def schedule_view(self):
